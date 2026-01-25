@@ -1,0 +1,26 @@
+{
+  "visitors": [
+    {
+      "id": "37ca9f24-b3cf-4c78-8497-25d93f7ffcf7",
+      "kind": "walkin",
+      "idNumber": "669677",
+      "fullName": "Mark Chweya",
+      "email": "chweyamark@gmail.com",
+      "destination": "School of Science",
+      "decision": "approved",
+      "createdAt": "2026-01-25T21:17:41.001Z"
+    },
+    {
+      "id": "2dbbb5a8-6a9a-47ee-8521-df2a999a1dc6",
+      "kind": "walkin",
+      "idNumber": "669677",
+      "fullName": "Mark Chweya",
+      "email": "chweyamark@gmail.com",
+      "decision": "approved",
+      "decisionBy": "Security",
+      "decisionAt": "2026-01-25T21:03:21.570Z",
+      "createdAt": "2026-01-25T21:03:21.570Z",
+      "checkedOutAt": "2026-01-25T21:16:22.158Z"
+    }
+  ]
+}

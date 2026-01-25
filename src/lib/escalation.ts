@@ -1,4 +1,4 @@
-import { prisma } from "./db";
+﻿import { prisma } from "./db";
 
 /**
  * Thresholds in minutes after checkoutStartAt.
@@ -40,7 +40,7 @@ export async function runEscalationSweep() {
       });
       if (already) continue;
 
-      await prisma.([
+      await prisma.$transaction([
         prisma.event.create({
           data: {
             visitId: v.id,
