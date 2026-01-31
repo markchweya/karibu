@@ -1,6 +1,26 @@
 {
   "visitors": [
     {
+      "id": "7d21cecb-3d31-46fd-8d6e-a99cc07128fa",
+      "kind": "walkin",
+      "idNumber": "669678",
+      "fullName": "Huaj",
+      "email": "chweyahub@gmail.com",
+      "destination": "Freida Brown",
+      "decision": "approved",
+      "createdAt": "2026-01-25T21:55:04.846Z"
+    },
+    {
+      "id": "261fb922-2c49-4d8d-95b5-a9604cb2211c",
+      "kind": "walkin",
+      "idNumber": "669677",
+      "fullName": "Jane",
+      "email": "chweyamark@gmail.com",
+      "destination": "Auditorium",
+      "decision": "approved",
+      "createdAt": "2026-01-25T21:53:50.697Z"
+    },
+    {
       "id": "5aee6550-aa71-436e-b51e-cf216db2d3de",
       "kind": "walkin",
       "idNumber": "669677",
