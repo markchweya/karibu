@@ -1,97 +1,19 @@
 ﻿import Link from "next/link";
-import { revalidatePath } from "next/cache";
-import { randomUUID } from "crypto";
-import fs from "fs/promises";
-import path from "path";
-import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { readStore, s, todayISO, fmt, initials, type Invite, type Visitor } from "@/lib/karibuStore";
+import { checkInInviteByCode, checkoutByIdNumber, checkoutByVisitorId, registerWalkin } from "./actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ======================================================
-   TYPES
+   TYPES (UI)
 ====================================================== */
-type Decision = "pending" | "approved" | "rejected";
-type VisitorKind = "invite" | "walkin";
 type SearchMode = "name" | "id";
 type Filter = "active" | "checkedout" | "today" | "all";
 
-type Visitor = {
-  id: string;
-  kind: VisitorKind;
-  idNumber: string;
-  fullName: string;
-  email?: string;
-  phone?: string;
-  destination?: string;
-
-  decision: Decision;
-  createdAt: string;
-
-  checkedOutAt?: string;
-};
-
-type Store = { visitors: Visitor[] };
-
 /* ======================================================
-   STORE (MVP JSON)
-====================================================== */
-const DATA_DIR = path.join(process.cwd(), ".arrivo-data");
-const DATA_FILE = path.join(DATA_DIR, "visitors.json");
-
-async function readStore(): Promise<Store> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw) as Store;
-    if (!parsed?.visitors) return { visitors: [] };
-    return parsed;
-  } catch {
-    return { visitors: [] };
-  }
-}
-
-async function writeStore(store: Store) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(store, null, 2), "utf8");
-}
-
-function s(v: unknown) {
-  return String(v ?? "").trim();
-}
-
-function normEmail(v: string) {
-  return v.trim().toLowerCase();
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function fmt(iso?: string) {
-  if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
-function initials(name: string) {
-  const parts = name.split(" ").filter(Boolean);
-  const a = parts[0]?.[0] ?? "V";
-  const b = parts[1]?.[0] ?? parts[0]?.[1] ?? "";
-  return (a + b).toUpperCase();
-}
-
-function maskPhone(p?: string) {
-  if (!p) return "";
-  const t = p.replace(/\s+/g, "");
-  if (t.length <= 4) return t;
-  return " " + t.slice(-4);
-}
-
-/* ======================================================
-   DESTINATIONS
+   DESTINATIONS (same)
 ====================================================== */
 const DESTINATIONS = [
   "Admin",
@@ -109,112 +31,13 @@ const DESTINATIONS = [
 ];
 
 /* ======================================================
-   ACTIONS
-====================================================== */
-async function registerGuest(formData: FormData) {
-  "use server";
-
-  const idNumber = s(formData.get("idNumber"));
-  const fullName = s(formData.get("fullName"));
-  const emailRaw = s(formData.get("email"));
-  const phone = s(formData.get("phone"));
-  const destination = s(formData.get("destination"));
-
-  if (!idNumber || idNumber.length < 4) redirect("/security?flash=bad_id");
-  if (!fullName || fullName.length < 2) redirect("/security?flash=bad_name");
-  if (!destination) redirect("/security?flash=bad_dest");
-
-  const store = await readStore();
-
-  //  Enforce uniqueness among ACTIVE visits (realistic: same person can return later after checkout)
-  const active = store.visitors.filter((v) => !v.checkedOutAt);
-
-  const dupId = active.some((v) => v.idNumber === idNumber);
-  if (dupId) redirect("/security?flash=dup_id");
-
-  const email = emailRaw ? normEmail(emailRaw) : "";
-  if (email) {
-    const dupEmail = active.some((v) => normEmail(v.email || "") === email);
-    if (dupEmail) redirect("/security?flash=dup_email");
-  }
-
-  const v: Visitor = {
-    id: randomUUID(),
-    kind: "walkin",
-    idNumber,
-    fullName,
-    email: emailRaw || undefined,
-    phone: phone || undefined,
-    destination,
-    decision: "approved",
-    createdAt: new Date().toISOString(),
-  };
-
-  store.visitors.unshift(v);
-  await writeStore(store);
-
-  revalidatePath("/security");
-  redirect("/security?flash=registered");
-}
-
-async function checkoutByIdNumber(formData: FormData) {
-  "use server";
-
-  const idNumber = s(formData.get("idNumber"));
-  if (!idNumber) {
-    revalidatePath("/security");
-    redirect("/security?flash=checkout_missing");
-  }
-
-  const store = await readStore();
-
-  // If there are multiple past records, checkout the most recent ACTIVE one
-  const v = store.visitors.find((x) => x.idNumber === idNumber && !x.checkedOutAt);
-
-  if (!v) {
-    revalidatePath("/security");
-    redirect("/security?flash=checkout_notfound");
-  }
-
-  v.checkedOutAt = new Date().toISOString();
-  await writeStore(store);
-
-  revalidatePath("/security");
-  redirect("/security?flash=checked_out");
-}
-
-async function checkoutByVisitorId(formData: FormData) {
-  "use server";
-
-  const vid = s(formData.get("visitorId"));
-  if (!vid) {
-    revalidatePath("/security");
-    redirect("/security?flash=checkout_missing");
-  }
-
-  const store = await readStore();
-  const v = store.visitors.find((x) => x.id === vid && !x.checkedOutAt);
-
-  if (!v) {
-    revalidatePath("/security");
-    redirect("/security?flash=checkout_notfound");
-  }
-
-  v.checkedOutAt = new Date().toISOString();
-  await writeStore(store);
-
-  revalidatePath("/security");
-  redirect("/security?flash=checked_out");
-}
-
-/* ======================================================
    UI HELPERS
 ====================================================== */
 function Pill({
   children,
   tone = "slate",
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   tone?: "slate" | "blue" | "gold" | "green" | "red";
 }) {
   const tones: Record<string, string> = {
@@ -237,7 +60,7 @@ function Pill({
   );
 }
 
-function CardShell({ children }: { children: React.ReactNode }) {
+function CardShell({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-[28px] border border-white/40 bg-white/75 shadow-[0_26px_80px_rgba(2,6,23,0.10)] backdrop-blur-xl">
       {children}
@@ -268,27 +91,59 @@ function AvatarStack({ names }: { names: string[] }) {
   );
 }
 
+function maskPhone(p?: string) {
+  if (!p) return "";
+  const t = p.replace(/\s+/g, "");
+  if (t.length <= 4) return t;
+  return " " + t.slice(-4);
+}
+
 function flashMeta(code: string) {
   switch (code) {
     case "registered":
-      return { tone: "green" as const, title: "Registered", body: "Visitor has been registered successfully." };
+      return { tone: "green" as const, title: "Registered", body: "Walk-in visitor registered successfully." };
+    case "checked_in":
+      return { tone: "green" as const, title: "Checked in", body: "Invite checked in successfully." };
+    case "checked_out":
+      return { tone: "green" as const, title: "Checked out", body: "Visitor checkout completed." };
+
     case "dup_id":
       return { tone: "red" as const, title: "Duplicate ID", body: "That ID is already active. Check them out first." };
     case "dup_email":
       return { tone: "red" as const, title: "Duplicate Email", body: "That email is already active. Try search by name or ID." };
-    case "checked_out":
-      return { tone: "green" as const, title: "Checked out", body: "Visitor checkout completed." };
-    case "checkout_notfound":
-      return { tone: "red" as const, title: "Not found", body: "No active visitor found for that ID. Try searching by name." };
+
     case "bad_id":
       return { tone: "red" as const, title: "Invalid ID", body: "ID number is required (min 4 chars)." };
     case "bad_name":
       return { tone: "red" as const, title: "Invalid name", body: "Full name is required." };
     case "bad_dest":
       return { tone: "red" as const, title: "Missing destination", body: "Please select a destination." };
+
+    case "code_missing":
+      return { tone: "red" as const, title: "Missing code", body: "Enter the invite code from the visitor." };
+    case "invite_notfound":
+      return { tone: "red" as const, title: "Invite not found", body: "No invite matches that code." };
+    case "invite_wrongday":
+      return { tone: "red" as const, title: "Wrong day", body: "That invite is not valid for today." };
+    case "invite_cancelled":
+      return { tone: "red" as const, title: "Cancelled invite", body: "This invite was cancelled by the host." };
+    case "invite_already":
+      return { tone: "red" as const, title: "Already checked in", body: "That invite has already been checked in." };
+
+    case "checkout_missing":
+      return { tone: "red" as const, title: "Missing ID", body: "Please enter an ID number to checkout." };
+    case "checkout_notfound":
+      return { tone: "red" as const, title: "Not found", body: "No active visitor found for that ID. Try searching by name." };
+
     default:
       return null;
   }
+}
+
+function inviteTone(i: Invite) {
+  if (i.status === "checkedin") return "green" as const;
+  if (i.status === "cancelled") return "slate" as const;
+  return "gold" as const;
 }
 
 /* ======================================================
@@ -306,15 +161,28 @@ export default async function SecurityPage({
   const filter = (s(searchParams.filter) as Filter) || "active";
   const flash = s(searchParams.flash);
 
-  const all = store.visitors.slice();
   const today = todayISO();
+
+  // Invites today (pending first)
+  const invitesToday = store.invites
+    .filter((i) => i.forDate === today)
+    .sort((a, b) => {
+      const rank = (x: Invite) => (x.status === "pending" ? 0 : x.status === "checkedin" ? 1 : 2);
+      return rank(a) - rank(b);
+    });
+
+  const pendingInvites = invitesToday.filter((i) => i.status === "pending");
+  const checkedInInvites = invitesToday.filter((i) => i.status === "checkedin");
+
+  // Visitors list
+  const all = store.visitors.slice();
 
   const activeVisitors = all.filter((v) => !v.checkedOutAt);
   const activeCount = activeVisitors.length;
   const activeNames = activeVisitors.slice(0, 4).map((v) => v.fullName);
 
   // Filter
-  let filtered = all;
+  let filtered: Visitor[] = all;
   if (filter === "active") filtered = all.filter((v) => !v.checkedOutAt);
   if (filter === "checkedout") filtered = all.filter((v) => !!v.checkedOutAt);
   if (filter === "today") filtered = all.filter((v) => v.createdAt.slice(0, 10) === today);
@@ -329,16 +197,6 @@ export default async function SecurityPage({
           if (mode === "id") return v.idNumber.toLowerCase().includes(needle);
           return v.fullName.toLowerCase().includes(needle);
         });
-
-  const hasSearch = needle.length > 0;
-  const altMode: SearchMode = mode === "id" ? "name" : "id";
-  const altHits =
-    hasSearch
-      ? filtered.filter((v) => {
-          if (altMode === "id") return v.idNumber.toLowerCase().includes(needle);
-          return v.fullName.toLowerCase().includes(needle);
-        }).length
-      : 0;
 
   const buildHref = (next: Partial<{ q: string; mode: SearchMode; filter: Filter }>) => {
     const params = new URLSearchParams();
@@ -375,7 +233,7 @@ export default async function SecurityPage({
                 <span className="h-3 w-3 rounded-full bg-[#F0C000] shadow-[0_8px_30px_rgba(240,192,0,0.5)]" />
               </span>
               <div className="leading-tight">
-                <div className="text-[15px] font-semibold">Arrivo</div>
+                <div className="text-[15px] font-semibold">Karibu</div>
                 <div className="text-xs text-slate-500">Security Desk</div>
               </div>
             </Link>
@@ -387,6 +245,12 @@ export default async function SecurityPage({
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              href="/host"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50"
+            >
+              Host Portal
+            </Link>
             <Link
               href="/login"
               className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50"
@@ -424,7 +288,142 @@ export default async function SecurityPage({
             </div>
           ) : null}
 
-          {/* TOP: Register (always visible) */}
+          {/* INVITES TODAY */}
+          <section>
+            <CardShell>
+              <div className="border-b border-white/50 p-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Host invites today
+                    </div>
+                    <div className="mt-1 text-2xl font-semibold tracking-tight">Check-in invited visitors</div>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Visitor arrives  Security checks them in using the invite code.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Pill tone="gold">{pendingInvites.length} pending</Pill>
+                    <Pill tone="green">{checkedInInvites.length} checked in</Pill>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {/* Check-in by code */}
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
+                  <div className="lg:col-span-8">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Check-in</div>
+                    <div className="mt-1 text-lg font-semibold tracking-tight">Enter invite code</div>
+
+                    <form action={checkInInviteByCode} className="mt-3 flex flex-col gap-3 sm:flex-row">
+                      <input
+                        name="code"
+                        required
+                        placeholder="e.g. 7H3K2QZ"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm uppercase tracking-widest outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                      />
+                      <button className="rounded-2xl bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(32,48,144,0.22)] transition hover:shadow-[0_24px_60px_rgba(32,48,144,0.30)]">
+                        Check in
+                      </button>
+                    </form>
+
+                    <div className="mt-2 text-xs text-slate-600">
+                      The visitor should show the code that the host shared with them.
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-4">
+                    <div className="rounded-[22px] border border-[rgba(240,192,0,0.45)] bg-[rgba(240,192,0,0.10)] p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-700/80">
+                        Quick stats
+                      </div>
+                      <div className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Today</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Pill tone="gold">{invitesToday.length} invites</Pill>
+                        <Pill tone="blue">{pendingInvites.length} pending</Pill>
+                        <Pill tone="green">{checkedInInvites.length} checked in</Pill>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Invite list */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invites</div>
+                    <Pill tone="blue">{invitesToday.length} shown</Pill>
+                  </div>
+
+                  <div className="mt-3 max-h-[420px] overflow-y-auto pr-1 [scrollbar-width:thin]">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {invitesToday.length === 0 ? (
+                        <div className="sm:col-span-2 rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
+                          No host invites yet today.
+                        </div>
+                      ) : (
+                        invitesToday.map((i) => (
+                          <div
+                            key={i.id}
+                            className="relative overflow-hidden rounded-[26px] border border-white/40 bg-white/80 p-5 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl"
+                          >
+                            <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,rgba(32,48,144,0.35),rgba(240,192,0,0.45),transparent)]" />
+
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold">{i.visitorName}</div>
+                                <div className="mt-0.5 truncate text-xs text-slate-500">
+                                  Host: <span className="font-semibold text-slate-700">{i.hostName}</span>
+                                </div>
+                              </div>
+                              <Pill tone={inviteTone(i)}>
+                                {i.status === "pending" ? "Pending" : i.status === "checkedin" ? "Checked in" : "Cancelled"}
+                              </Pill>
+                            </div>
+
+                            <div className="mt-4 space-y-1 text-sm text-slate-700">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-slate-500">Code</span>
+                                <span className="font-semibold text-slate-800 tracking-widest">{i.code}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-slate-500">ID</span>
+                                <span className="font-semibold text-slate-800">{i.visitorIdNumber}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-slate-500">Purpose</span>
+                                <span className="font-semibold text-slate-800 text-right">{i.purpose}</span>
+                              </div>
+                              {i.destination ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-slate-500">Destination</span>
+                                  <span className="font-semibold text-slate-800 text-right">{i.destination}</span>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {i.status === "pending" ? (
+                              <div className="mt-4 flex items-center justify-end gap-2">
+                                <form action={checkInInviteByCode}>
+                                  <input type="hidden" name="code" value={i.code} />
+                                  <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">
+                                    Check in
+                                  </button>
+                                </form>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardShell>
+          </section>
+
+          {/* WALK-IN REGISTER (same as your UI) */}
           <section>
             <CardShell>
               <div className="p-6">
@@ -433,9 +432,7 @@ export default async function SecurityPage({
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Register walk-in visitor
                     </div>
-                    <div className="mt-1 text-2xl font-semibold tracking-tight">
-                      Gate Entry
-                    </div>
+                    <div className="mt-1 text-2xl font-semibold tracking-tight">Gate Entry</div>
                     <p className="mt-2 text-sm text-slate-600 max-w-xl">
                       Walk-ins are auto-approved at the gate. Duplicate ID or email (active) is blocked.
                     </p>
@@ -450,7 +447,7 @@ export default async function SecurityPage({
                   </div>
                 </div>
 
-                <form action={registerGuest} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12">
+                <form action={registerWalkin} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12">
                   <div className="md:col-span-3">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       ID Number
@@ -526,22 +523,15 @@ export default async function SecurityPage({
             </CardShell>
           </section>
 
-          {/* View Visitors (better UI) */}
+          {/* View Visitors (your existing section kept) */}
           <section>
             <CardShell>
-              {/* Top bar of section (count + avatars) */}
               <div className="border-b border-white/50 p-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      View visitors
-                    </div>
-                    <div className="mt-1 text-2xl font-semibold tracking-tight">
-                      Active on campus
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Search inside this section. Checkout is also here.
-                    </p>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">View visitors</div>
+                    <div className="mt-1 text-2xl font-semibold tracking-tight">Active on campus</div>
+                    <p className="mt-2 text-sm text-slate-600">Search inside this section. Checkout is also here.</p>
                   </div>
 
                   <div className="flex items-center gap-4">
@@ -556,7 +546,6 @@ export default async function SecurityPage({
                 </div>
               </div>
 
-              {/* Controls */}
               <div className="p-6">
                 <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
                   {/* SEARCH */}
@@ -571,7 +560,6 @@ export default async function SecurityPage({
                         </div>
                       </div>
 
-                      {/* segmented toggle */}
                       <div className="rounded-full border border-slate-200 bg-white/70 p-1 shadow-sm backdrop-blur">
                         <Link
                           href={buildHref({ mode: "name" })}
@@ -630,41 +618,14 @@ export default async function SecurityPage({
                           </Link>
                         ))}
                       </div>
-
-                      {hasSearch && searched.length === 0 ? (
-                        <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700">
-                          No results for <span className="font-semibold">{q}</span> using{" "}
-                          <span className="font-semibold">{mode === "id" ? "ID" : "Name"}</span>.
-                          {altHits > 0 ? (
-                            <div className="mt-2">
-                              Try{" "}
-                              <Link
-                                href={buildHref({ mode: altMode })}
-                                className="font-semibold text-[#203090] underline underline-offset-4"
-                              >
-                                searching by {altMode === "id" ? "ID" : "Name"}
-                              </Link>{" "}
-                               we found <span className="font-semibold">{altHits}</span> match(es) there.
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-slate-500">
-                              Tip: switch mode (Name  ID) or change the filter.
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
                     </form>
                   </div>
 
                   {/* CHECKOUT */}
                   <div className="lg:col-span-4">
                     <div className="rounded-[22px] border border-[rgba(240,192,0,0.45)] bg-[rgba(240,192,0,0.10)] p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-700/80">
-                        Checkout
-                      </div>
-                      <div className="mt-1 text-lg font-semibold tracking-tight text-slate-900">
-                        End a visit by ID
-                      </div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-700/80">Checkout</div>
+                      <div className="mt-1 text-lg font-semibold tracking-tight text-slate-900">End a visit by ID</div>
 
                       <form action={checkoutByIdNumber} className="mt-3 flex gap-2">
                         <input
@@ -678,19 +639,15 @@ export default async function SecurityPage({
                         </button>
                       </form>
 
-                      <div className="mt-2 text-xs text-slate-700/70">
-                        If not found, search by name.
-                      </div>
+                      <div className="mt-2 text-xs text-slate-700/70">If not found, search by name.</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Results grid in a scroll area */}
+                {/* Results grid */}
                 <div className="mt-6">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Results
-                    </div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Results</div>
                     <Pill tone="blue">{searched.length} shown</Pill>
                   </div>
 
@@ -723,6 +680,20 @@ export default async function SecurityPage({
                             </div>
 
                             <div className="mt-4 space-y-1 text-sm text-slate-700">
+                              {v.kind === "invite" ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-slate-500">Host</span>
+                                  <span className="font-semibold text-slate-800 text-right">{v.hostName || ""}</span>
+                                </div>
+                              ) : null}
+
+                              {v.purpose ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-slate-500">Purpose</span>
+                                  <span className="font-semibold text-slate-800 text-right">{v.purpose}</span>
+                                </div>
+                              ) : null}
+
                               <div className="flex items-center justify-between gap-3">
                                 <span className="text-slate-500">Destination</span>
                                 <span className="font-semibold text-slate-800 text-right">{v.destination || ""}</span>
@@ -731,8 +702,8 @@ export default async function SecurityPage({
                               <div className="flex items-center justify-between gap-3">
                                 <span className="text-slate-500">Contact</span>
                                 <span className="text-right text-slate-800">
-                                  {v.email || ""}{v.phone ? (v.email ? "  " : "") + maskPhone(v.phone) : ""}
-                                  {!v.email && !v.phone ? "" : ""}
+                                  {v.email || ""}
+                                  {v.phone ? (v.email ? "  " : "") + maskPhone(v.phone) : ""}
                                 </span>
                               </div>
 
@@ -767,11 +738,6 @@ export default async function SecurityPage({
                         <div className="sm:col-span-2">
                           <div className="rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
                             No visitors to show for this filter.
-                            {hasSearch ? (
-                              <div className="mt-2 text-slate-500">
-                                Switch search mode (Name  ID) or change the filter.
-                              </div>
-                            ) : null}
                           </div>
                         </div>
                       ) : null}
@@ -786,7 +752,7 @@ export default async function SecurityPage({
 
       <footer className="relative z-10">
         <div className="mx-auto max-w-7xl px-6 py-10 text-xs text-slate-500">
-          Arrivo  Security Desk  MVP
+          Karibu  Security Desk  MVP
         </div>
       </footer>
     </div>
