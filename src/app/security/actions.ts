@@ -1,116 +1,138 @@
-'use server';
+﻿"use server";
 
-import { prisma } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
-import { safeCode } from "@/lib/utils";
-import { runEscalationSweep } from "@/lib/escalation";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import {
+  readStore,
+  writeStore,
+  s,
+  todayISO,
+  newId,
+  type Visitor,
+} from "@/lib/karibuStore";
 
-export async function securityCheckIn(formData: FormData) {
-  const s = await requireSession();
-  if (s.role !== "SECURITY") throw new Error("FORBIDDEN");
+/* =========================
+   WALK-IN (existing behavior)
+========================= */
+export async function registerWalkin(formData: FormData) {
+  const idNumber = s(formData.get("idNumber"));
+  const fullName = s(formData.get("fullName"));
+  const emailRaw = s(formData.get("email"));
+  const phone = s(formData.get("phone"));
+  const destination = s(formData.get("destination"));
 
-  const code = String(formData.get(\"code\") || \"\").trim().toUpperCase();
-  const idNumber = String(formData.get(\"idNumber\") || \"\").trim();
+  if (!idNumber || idNumber.length < 4) redirect("/security?flash=bad_id");
+  if (!fullName || fullName.length < 2) redirect("/security?flash=bad_name");
+  if (!destination) redirect("/security?flash=bad_dest");
 
-  if (!code && !idNumber) return { ok: false, error: \"Enter code or ID number.\" };
+  const store = await readStore();
 
-  let visit = null;
-  if (code) visit = await prisma.visit.findUnique({ where: { code }, include: { visitor: true } });
+  // block duplicate ACTIVE ID/email
+  const active = store.visitors.filter((v) => !v.checkedOutAt);
 
-  if (!visit && idNumber) {
-    // if visitor exists, pick most recent pending invite
-    const visitor = await prisma.visitor.findFirst({ where: { idNumber } });
-    if (visitor) {
-      visit = await prisma.visit.findFirst({
-        where: { visitorId: visitor.id, status: \"PENDING_ARRIVAL\" },
-        orderBy: { createdAt: \"desc\" },
-        include: { visitor: true },
-      });
-    }
+  if (active.some((v) => v.idNumber === idNumber)) redirect("/security?flash=dup_id");
+
+  const email = emailRaw.trim().toLowerCase();
+  if (email) {
+    const dupEmail = active.some((v) => (v.email || "").trim().toLowerCase() === email);
+    if (dupEmail) redirect("/security?flash=dup_email");
   }
 
-  if (!visit) return { ok: false, error: \"No matching invite found. Use Walk-in capture.\" };
-  if (visit.checkInAt) return { ok: false, error: \"Already checked in.\" };
+  const v: Visitor = {
+    id: newId(),
+    kind: "walkin",
+    idNumber,
+    fullName,
+    email: emailRaw || undefined,
+    phone: phone || undefined,
+    destination,
+    decision: "approved",
+    createdAt: new Date().toISOString(),
+  };
 
-  await prisma.([
-    prisma.visit.update({
-      where: { id: visit.id },
-      data: { checkInAt: new Date(), status: \"CHECKED_IN\" },
-    }),
-    prisma.event.create({
-      data: { visitId: visit.id, type: \"CHECKIN\", note: \"Checked in at gate\", actorUserId: s.uid },
-    }),
-  ]);
+  store.visitors.unshift(v);
+  await writeStore(store);
 
-  return { ok: true };
+  revalidatePath("/security");
+  redirect("/security?flash=registered");
 }
 
-export async function securityWalkIn(formData: FormData) {
-  const s = await requireSession();
-  if (s.role !== \"SECURITY\") throw new Error(\"FORBIDDEN\");
+/* =========================
+   INVITE CHECK-IN
+========================= */
+export async function checkInInviteByCode(formData: FormData) {
+  const code = s(formData.get("code")).toUpperCase().replace(/\s+/g, "");
+  if (!code) redirect("/security?flash=code_missing");
 
-  const fullName = String(formData.get(\"fullName\") || \"\").trim();
-  const idNumber = String(formData.get(\"idNumber\") || \"\").trim();
-  const email = String(formData.get(\"email\") || \"\").trim();
-  const phone = String(formData.get(\"phone\") || \"\").trim();
-  const vehiclePlate = String(formData.get(\"vehiclePlate\") || \"\").trim();
-  const numPeople = Number(formData.get(\"numPeople\") || 1);
-  const purpose = String(formData.get(\"purpose\") || \"\").trim();
-  const destination = String(formData.get(\"destination\") || \"\").trim();
+  const store = await readStore();
+  const today = todayISO();
 
-  if (!fullName || !idNumber || !purpose || !destination) return { ok: false, error: \"Missing required fields.\" };
+  const inv = store.invites.find((i) => i.code === code);
 
-  const visitor = await prisma.visitor.upsert({
-    where: { idNumber },
-    update: { fullName, email: email || null, phone: phone || null },
-    create: { fullName, idNumber, email: email || null, phone: phone || null },
-  });
+  if (!inv) redirect("/security?flash=invite_notfound");
+  if (inv.forDate !== today) redirect("/security?flash=invite_wrongday");
+  if (inv.status === "cancelled") redirect("/security?flash=invite_cancelled");
+  if (inv.status === "checkedin") redirect("/security?flash=invite_already");
 
-  const code = safeCode(7);
+  // prevent duplicate ACTIVE visit with same ID
+  const active = store.visitors.filter((v) => !v.checkedOutAt);
+  if (active.some((v) => v.idNumber === inv.visitorIdNumber)) redirect("/security?flash=dup_id");
 
-  await prisma.visit.create({
-    data: {
-      code,
-      status: \"CHECKED_IN\",
-      purpose,
-      destination,
-      numPeople: Number.isFinite(numPeople) ? numPeople : 1,
-      vehiclePlate: vehiclePlate || null,
-      visitorId: visitor.id,
-      createdByUserId: s.uid,
-      checkInAt: new Date(),
-      events: { create: [{ type: \"WALKIN_CREATED\", note: \"Captured at gate (walk-in)\", actorUserId: s.uid }] },
-    },
-  });
+  const visit: Visitor = {
+    id: newId(),
+    kind: "invite",
+    idNumber: inv.visitorIdNumber,
+    fullName: inv.visitorName,
+    destination: inv.destination,
+    purpose: inv.purpose,
+    hostName: inv.hostName,
+    inviteCode: inv.code,
+    inviteId: inv.id,
+    decision: "approved",
+    createdAt: new Date().toISOString(),
+  };
 
-  return { ok: true, code };
+  inv.status = "checkedin";
+  inv.checkedInAt = new Date().toISOString();
+
+  store.visitors.unshift(visit);
+  await writeStore(store);
+
+  revalidatePath("/security");
+  redirect("/security?flash=checked_in");
 }
 
-export async function securityConfirmExit(formData: FormData) {
-  const s = await requireSession();
-  if (s.role !== \"SECURITY\") throw new Error(\"FORBIDDEN\");
+/* =========================
+   CHECKOUT (same)
+========================= */
+export async function checkoutByIdNumber(formData: FormData) {
+  const idNumber = s(formData.get("idNumber"));
+  if (!idNumber) redirect("/security?flash=checkout_missing");
 
-  const code = String(formData.get(\"code\") || \"\").trim().toUpperCase();
-  if (!code) return { ok: false, error: \"Enter visitor code.\" };
+  const store = await readStore();
+  const v = store.visitors.find((x) => x.idNumber === idNumber && !x.checkedOutAt);
 
-  const visit = await prisma.visit.findUnique({ where: { code } });
-  if (!visit) return { ok: false, error: \"Visitor not found.\" };
-  if (visit.exitConfirmedAt) return { ok: false, error: \"Already exit-confirmed.\" };
+  if (!v) redirect("/security?flash=checkout_notfound");
 
-  await prisma.([
-    prisma.visit.update({
-      where: { code },
-      data: { exitConfirmedAt: new Date(), status: \"EXIT_CONFIRMED\" },
-    }),
-    prisma.event.create({
-      data: { visitId: visit.id, type: \"EXIT_CONFIRMED\", note: \"Exit confirmed at gate\", actorUserId: s.uid },
-    }),
-  ]);
+  v.checkedOutAt = new Date().toISOString();
+  await writeStore(store);
 
-  return { ok: true };
+  revalidatePath("/security");
+  redirect("/security?flash=checked_out");
 }
 
-export async function securityPulse() {
-  await runEscalationSweep();
-  return { ok: true };
+export async function checkoutByVisitorId(formData: FormData) {
+  const vid = s(formData.get("visitorId"));
+  if (!vid) redirect("/security?flash=checkout_missing");
+
+  const store = await readStore();
+  const v = store.visitors.find((x) => x.id === vid && !x.checkedOutAt);
+
+  if (!v) redirect("/security?flash=checkout_notfound");
+
+  v.checkedOutAt = new Date().toISOString();
+  await writeStore(store);
+
+  revalidatePath("/security");
+  redirect("/security?flash=checked_out");
 }
