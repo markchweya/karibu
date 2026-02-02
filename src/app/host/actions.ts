@@ -10,7 +10,9 @@ import {
   normKey,
   ensureUniqueCode,
   newId,
+  nowISO,
   type Invite,
+  type CheckoutRequest,
 } from "@/lib/karibuStore";
 
 const MAX_INVITES_PER_HOST_PER_DAY = 4;
@@ -31,13 +33,11 @@ export async function hostCreateInvite(formData: FormData) {
   const forDate = todayISO();
   const hostKey = normKey(hostName);
 
-  // count invites created today for this host (excluding cancelled)
   const todays = store.invites.filter((i) => i.forDate === forDate && i.hostKey === hostKey && i.status !== "cancelled");
   if (todays.length >= MAX_INVITES_PER_HOST_PER_DAY) {
     redirect(`/host?host=${encodeURIComponent(hostName)}&flash=limit`);
   }
 
-  // no duplicates: same visitor ID already invited today by this host (pending)
   const dup = todays.some((i) => i.visitorIdNumber === visitorIdNumber && i.status === "pending");
   if (dup) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=dup_invite`);
 
@@ -56,7 +56,7 @@ export async function hostCreateInvite(formData: FormData) {
     purpose,
     destination: destination || undefined,
     forDate,
-    createdAt: new Date().toISOString(),
+    createdAt: nowISO(),
     status: "pending",
   };
 
@@ -77,16 +77,71 @@ export async function hostCancelInvite(formData: FormData) {
   const store = await readStore();
   const inv = store.invites.find((i) => i.id === inviteId);
   if (!inv) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=not_found`);
-
-  // only cancel pending (checked-in should not be cancelled)
   if (inv.status !== "pending") redirect(`/host?host=${encodeURIComponent(hostName)}&flash=cant_cancel`);
 
   inv.status = "cancelled";
-  inv.cancelledAt = new Date().toISOString();
+  inv.cancelledAt = nowISO();
 
   await writeStore(store);
 
   revalidatePath("/host");
   revalidatePath("/security");
   redirect(`/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cancelled`);
+}
+
+/* ======================================================
+   HOST START CHECKOUT CLOCK (10 min)
+   - Host triggers checkout request
+   - Security sees immediately
+====================================================== */
+export async function hostStartCheckout(formData: FormData) {
+  const hostName = s(formData.get("hostName"));
+  const code = s(formData.get("code")).toUpperCase().replace(/\s+/g, "");
+
+  if (hostName.length < 2) redirect("/host?flash=bad_host");
+  if (!code) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=code_missing`);
+
+  const store = await readStore();
+
+  // Find active visitor by invite code
+  const v = store.visitors.find((x) => !x.checkedOutAt && (x.inviteCode || "").toUpperCase() === code);
+  if (!v) {
+    // if visitor not checked in yet, still allow host to request checkout? (usually no)
+    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=visitor_notfound`);
+  }
+
+  // Prevent duplicate checkout requests for same active visitor
+  const existingActiveReq = store.checkoutRequests.find(
+    (r) => r.visitorId === v.id && r.status === "requested"
+  );
+  if (existingActiveReq) {
+    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_already`);
+  }
+
+  const req: CheckoutRequest = {
+    id: newId(),
+    visitorId: v.id,
+    visitorName: v.fullName,
+    visitorIdNumber: v.idNumber,
+    hostName,
+    hostKey: normKey(hostName),
+    inviteCode: v.inviteCode,
+    requestedAt: nowISO(),
+    status: "requested",
+  };
+
+  store.checkoutRequests.unshift(req);
+
+  // Stamp on visitor so Security UI shows it clearly
+  v.checkoutRequestedAt = req.requestedAt;
+  v.checkoutRequestedBy = hostName;
+  v.checkoutRequestId = req.id;
+
+  await writeStore(store);
+
+  revalidatePath("/host");
+  revalidatePath("/security");
+
+  // toast on host + security
+  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_started&guest=${encodeURIComponent(v.fullName)}`);
 }
