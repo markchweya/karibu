@@ -11,10 +11,47 @@
       "inviteCode": "873SKVH",
       "inviteId": "3d3325cb-3ec5-4022-a5fe-261ad698d8ec",
       "decision": "approved",
-      "createdAt": "2026-01-31T19:52:16.141Z"
+      "createdAt": "2026-01-31T19:52:16.141Z",
+      "checkedOutAt": "2026-01-31T20:09:57.413Z"
     }
   ],
   "invites": [
+    {
+      "id": "80811b5b-091e-4efc-bde6-9d66ec68d4c0",
+      "code": "PY6FA96",
+      "hostName": "Mark Chweya",
+      "hostKey": "mark_chweya",
+      "visitorName": "Ashton Halllkjkl",
+      "visitorIdNumber": "8979789",
+      "purpose": "ddghf",
+      "forDate": "2026-01-31",
+      "createdAt": "2026-01-31T20:18:14.287Z",
+      "status": "pending"
+    },
+    {
+      "id": "edee08cf-8c89-4ba8-9fd6-fc23f8d2f149",
+      "code": "67WG9BC",
+      "hostName": "Mark Chweya",
+      "hostKey": "mark_chweya",
+      "visitorName": "Hudson Wairimu",
+      "visitorIdNumber": "669777",
+      "purpose": "Delivery for steam",
+      "forDate": "2026-01-31",
+      "createdAt": "2026-01-31T20:09:37.627Z",
+      "status": "pending"
+    },
+    {
+      "id": "65354f8f-d0b0-4f19-8144-2f2bce3259e8",
+      "code": "JXTVQMT",
+      "hostName": "Mark Chweya",
+      "hostKey": "mark_chweya",
+      "visitorName": "Hudson Wairimu",
+      "visitorIdNumber": "123456",
+      "purpose": "Delivery for steam",
+      "forDate": "2026-01-31",
+      "createdAt": "2026-01-31T20:08:56.321Z",
+      "status": "pending"
+    },
     {
       "id": "3d3325cb-3ec5-4022-a5fe-261ad698d8ec",
       "code": "873SKVH",
@@ -29,5 +66,6 @@
       "status": "checkedin",
       "checkedInAt": "2026-01-31T19:52:16.141Z"
     }
-  ]
+  ],
+  "checkoutRequests": []
 }
