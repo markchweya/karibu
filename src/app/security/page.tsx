@@ -2,7 +2,7 @@
 import ToastBar from "@/components/ToastBar";
 import type { ReactNode } from "react";
 import { readStore, s, todayISO, fmt, initials, ms } from "@/lib/karibuStore";
-import { checkInInviteByCode, checkoutByIdNumber, checkoutByVisitorId, registerWalkin, securityFinalizeCheckout } from "./actions";
+import { checkInInviteByCode, registerWalkin, securityFinalizeCheckout } from "./actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +56,13 @@ function maskPhone(p?: string) {
   return " " + t.slice(-4);
 }
 
+function maskId(id?: string) {
+  if (!id) return "";
+  const t = id.trim();
+  if (t.length <= 4) return t;
+  return `${"*".repeat(Math.max(0, t.length - 4))}${t.slice(-4)}`;
+}
+
 function flashMeta(code: string) {
   switch (code) {
     case "registered":
@@ -93,27 +100,37 @@ function flashMeta(code: string) {
   }
 }
 
-export default async function SecurityPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+export default async function SecurityPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const store = await readStore();
 
-  
-  const sp = await searchParams;
-const q = s(sp.q);
-  const mode = (s(sp.mode) as SearchMode) || "name";
-  const filter = (s(sp.filter) as Filter) || "active";
-  const flash = s(sp.flash);
-  const guest = s(sp.guest);
+  // searchParams is already a plain object here (no need to await)
+  const q = s(searchParams.q);
+  const mode = (s(searchParams.mode) as SearchMode) || "name";
+  const filter = (s(searchParams.filter) as Filter) || "active";
+  const flash = s(searchParams.flash);
+  const guest = s(searchParams.guest);
   const toast = flash ? flashMeta(flash) : null;
 
   const today = todayISO();
 
   const invitesToday = store.invites.filter((i) => i.forDate === today);
-  const pendingInvites = invitesToday.filter((i) => i.status === "pending");
+  const pendingInvites = invitesToday
+    .filter((i) => i.status === "pending")
+    // newest first if you have createdAt (safe fallback)
+    .slice()
+    .sort((a: any, b: any) => {
+      const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return tb - ta;
+    });
 
   const all = store.visitors.slice();
   const activeVisitors = all.filter((v) => !v.checkedOutAt);
   const activeCount = activeVisitors.length;
-  const activeNames = activeVisitors.slice(0, 4).map((v) => v.fullName);
 
   // Checkout clocks in progress
   const now = Date.now();
@@ -133,7 +150,9 @@ const q = s(sp.q);
   const searched =
     needle.length === 0
       ? filtered
-      : filtered.filter((v) => (mode === "id" ? v.idNumber.toLowerCase().includes(needle) : v.fullName.toLowerCase().includes(needle)));
+      : filtered.filter((v) =>
+          mode === "id" ? v.idNumber.toLowerCase().includes(needle) : v.fullName.toLowerCase().includes(needle)
+        );
 
   const buildHref = (next: Partial<{ q: string; mode: SearchMode; filter: Filter }>) => {
     const params = new URLSearchParams();
@@ -189,7 +208,6 @@ const q = s(sp.q);
 
       <main className="relative z-10">
         <div className="mx-auto max-w-7xl px-6 pb-12 pt-8 space-y-8">
-
           {/* Notifications (Security) */}
           <section>
             <CardShell>
@@ -221,13 +239,17 @@ const q = s(sp.q);
                       const escalated = ageMin >= 12;
                       const warned = ageMin >= 10;
                       return (
-                        <div key={v.id} className={["rounded-[26px] border p-5",
-                          escalated
-                            ? "border-red-200 bg-red-50"
-                            : warned
-                            ? "border-[rgba(240,192,0,0.45)] bg-[rgba(240,192,0,0.10)]"
-                            : "border-white/40 bg-white/80 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl",
-                        ].join(" ")}>
+                        <div
+                          key={v.id}
+                          className={[
+                            "rounded-[26px] border p-5",
+                            escalated
+                              ? "border-red-200 bg-red-50"
+                              : warned
+                              ? "border-[rgba(240,192,0,0.45)] bg-[rgba(240,192,0,0.10)]"
+                              : "border-white/40 bg-white/80 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl",
+                          ].join(" ")}
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="text-sm font-semibold">{v.fullName}</div>
@@ -239,7 +261,7 @@ const q = s(sp.q);
                           </div>
 
                           <div className="mt-3 text-sm text-slate-800">
-                            Started at <span className="font-semibold">{fmt(v.checkoutRequestedAt)}</span>  {ageMin} min ago
+                            Started at <span className="font-semibold">{fmt(v.checkoutRequestedAt)}</span> {ageMin} min ago
                           </div>
 
                           <div className="mt-4 flex justify-end">
@@ -268,11 +290,12 @@ const q = s(sp.q);
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Host invites today</div>
                     <div className="mt-1 text-2xl font-semibold tracking-tight">Check-in invited visitors</div>
                   </div>
-                  <Pill tone="gold">{pendingInvites.length} pending</Pill>
+                  <Pill tone={pendingInvites.length ? "gold" : "green"}>{pendingInvites.length} pending</Pill>
                 </div>
               </div>
 
-              <div className="p-6">
+              <div className="p-6 space-y-5">
+                {/* Code check-in input */}
                 <form action={checkInInviteByCode} className="flex flex-col gap-3 sm:flex-row">
                   <input
                     name="code"
@@ -284,6 +307,75 @@ const q = s(sp.q);
                     Check in
                   </button>
                 </form>
+
+                {/* Pending invite cards */}
+                {pendingInvites.length === 0 ? (
+                  <div className="rounded-[26px] border border-emerald-200 bg-emerald-50 px-5 py-6 text-sm text-emerald-900 shadow-sm backdrop-blur">
+                    No pending invites for today.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {pendingInvites.map((inv: any) => {
+                      const visitorName = inv.visitorName || "Unknown visitor";
+                      const hostName = inv.hostName || "-";
+                      const destination = inv.destination || "-";
+                      const purpose = inv.purpose || "-";
+                      const idMasked = maskId(inv.visitorIdNumber || "");
+                      const code = (inv.code || "").toUpperCase();
+
+                      return (
+                        <div
+                          key={inv.id}
+                          className="relative overflow-hidden rounded-[26px] border border-white/40 bg-white/80 p-5 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl"
+                        >
+                          <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,rgba(240,192,0,0.55),rgba(32,48,144,0.35),transparent)]" />
+
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold truncate">{visitorName}</div>
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                ID: <span className="font-semibold text-slate-700">{idMasked || "-"}</span>
+                              </div>
+                            </div>
+                            <Pill tone="gold">Pending</Pill>
+                          </div>
+
+                          <div className="mt-4 space-y-1 text-sm text-slate-700">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-slate-500">Host</span>
+                              <span className="font-semibold text-slate-800 truncate">{hostName}</span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-slate-500">Destination</span>
+                              <span className="font-semibold text-slate-800 truncate">{destination}</span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-slate-500">Purpose</span>
+                              <span className="font-semibold text-slate-800 truncate">{purpose}</span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-slate-500">Code</span>
+                              <span className="font-semibold text-slate-900 uppercase tracking-widest">{code || "-"}</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex justify-end">
+                            {/* quick check-in button (uses same server action) */}
+                            <form action={checkInInviteByCode}>
+                              <input type="hidden" name="code" value={code} />
+                              <button className="rounded-full bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_35px_rgba(32,48,144,0.20)] transition hover:shadow-[0_20px_45px_rgba(32,48,144,0.26)]">
+                                Check in now
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </CardShell>
           </section>
@@ -298,19 +390,37 @@ const q = s(sp.q);
                 <form action={registerWalkin} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12">
                   <div className="md:col-span-3">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">ID Number</label>
-                    <input name="idNumber" required placeholder="e.g. 12345678" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]" />
+                    <input
+                      name="idNumber"
+                      required
+                      placeholder="e.g. 12345678"
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                    />
                   </div>
 
                   <div className="md:col-span-4">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Full Name</label>
-                    <input name="fullName" required placeholder="e.g. Jane Wanjiku" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]" />
+                    <input
+                      name="fullName"
+                      required
+                      placeholder="e.g. Jane Wanjiku"
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                    />
                   </div>
 
                   <div className="md:col-span-5">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Destination</label>
-                    <select name="destination" required className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]">
+                    <select
+                      name="destination"
+                      required
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                    >
                       <option value="">Select destination</option>
-                      {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      {DESTINATIONS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -324,7 +434,7 @@ const q = s(sp.q);
             </CardShell>
           </section>
 
-          {/* Visitors view (simple: reuse your old view later) */}
+          {/* Visitors view */}
           <section>
             <CardShell>
               <div className="border-b border-white/50 p-6">
@@ -343,7 +453,12 @@ const q = s(sp.q);
                 <form action="/security" method="get" className="flex flex-col gap-3 sm:flex-row">
                   <input type="hidden" name="mode" value={mode} />
                   <input type="hidden" name="filter" value={filter} />
-                  <input name="q" defaultValue={q} placeholder={mode === "id" ? "Search by ID" : "Search by name"} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]" />
+                  <input
+                    name="q"
+                    defaultValue={q}
+                    placeholder={mode === "id" ? "Search by ID" : "Search by name"}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                  />
                   <button className="rounded-2xl bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(32,48,144,0.22)]">
                     Search
                   </button>
@@ -360,7 +475,9 @@ const q = s(sp.q);
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="text-sm font-semibold truncate">{v.fullName}</div>
-                              <div className="mt-0.5 text-xs text-slate-500">ID: <span className="font-semibold text-slate-700">{v.idNumber}</span></div>
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                ID: <span className="font-semibold text-slate-700">{v.idNumber}</span>
+                              </div>
                             </div>
                             {isActive ? (hasClock ? <Pill tone="gold">Host started checkout</Pill> : <Pill tone="blue">Active</Pill>) : <Pill tone="slate">Checked out</Pill>}
                           </div>
@@ -404,14 +521,12 @@ const q = s(sp.q);
               </div>
             </CardShell>
           </section>
-
         </div>
       </main>
 
       <footer className="relative z-10">
-        <div className="mx-auto max-w-7xl px-6 py-10 text-xs text-slate-500">Karibu  Security Desk  MVP</div>
+        <div className="mx-auto max-w-7xl px-6 py-10 text-xs text-slate-500">Karibu Security Desk MVP</div>
       </footer>
     </div>
   );
 }
-
