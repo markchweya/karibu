@@ -1,6 +1,18 @@
 {
   "visitors": [
     {
+      "id": "3e5af0be-9262-49ba-bd69-9a4bbef04605",
+      "kind": "invite",
+      "idNumber": "445687",
+      "fullName": "Agnes Hurir",
+      "purpose": "Revision",
+      "hostName": "mark chweya",
+      "inviteCode": "28PBC3A",
+      "inviteId": "ea08d28a-85e1-49ca-b4a2-10e83227ce31",
+      "decision": "approved",
+      "createdAt": "2026-02-08T18:28:37.567Z"
+    },
+    {
       "id": "32a7f99e-0850-4d11-93d4-c1c76e1153f0",
       "kind": "invite",
       "idNumber": "669777",
@@ -17,6 +29,18 @@
   ],
   "invites": [
     {
+      "id": "1f3f1f7b-db24-46c8-a7e2-dfaf1c47b481",
+      "code": "AQK2CMD",
+      "hostName": "hawi uytre",
+      "hostKey": "hawi_uytre",
+      "visitorName": "ben gills",
+      "visitorIdNumber": "562134",
+      "purpose": "Visit",
+      "forDate": "2026-02-08",
+      "createdAt": "2026-02-08T19:02:27.689Z",
+      "status": "pending"
+    },
+    {
       "id": "ea08d28a-85e1-49ca-b4a2-10e83227ce31",
       "code": "28PBC3A",
       "hostName": "mark chweya",
@@ -26,7 +50,8 @@
       "purpose": "Revision",
       "forDate": "2026-02-08",
       "createdAt": "2026-02-08T11:36:16.227Z",
-      "status": "pending"
+      "status": "checkedin",
+      "checkedInAt": "2026-02-08T18:28:37.565Z"
     },
     {
       "id": "80811b5b-091e-4efc-bde6-9d66ec68d4c0",
