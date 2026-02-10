@@ -42,7 +42,10 @@ export async function hostCreateInvite(formData: FormData) {
   const forDate = todayISO();
   const hostKey = normKey(hostName);
 
-  const todays = store.invites.filter((i: Invite) => i.forDate === forDate && i.hostKey === hostKey && i.status !== "cancelled");
+  const todays = store.invites.filter(
+    (i: Invite) => i.forDate === forDate && i.hostKey === hostKey && i.status !== "cancelled"
+  );
+
   if (todays.length >= MAX_INVITES_PER_HOST_PER_DAY) {
     redirect(`/host?host=${encodeURIComponent(hostName)}&flash=limit`);
   }
@@ -75,9 +78,7 @@ export async function hostCreateInvite(formData: FormData) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  redirect(
-    `/host?host=${encodeURIComponent(hostName)}&flash=created&guest=${encodeURIComponent(visitorName)}`
-  );
+  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=created&guest=${encodeURIComponent(visitorName)}`);
 }
 
 export async function hostCancelInvite(formData: FormData) {
@@ -101,37 +102,33 @@ export async function hostCancelInvite(formData: FormData) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  redirect(
-    `/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cancelled&guest=${encodeURIComponent(inv.visitorName || "")}`
-  );
+  redirect(`/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cancelled&guest=${encodeURIComponent(inv.visitorName || "")}`);
 }
 
-export async function hostStartCheckout(formData: FormData) {
-  const hostName = s(formData.get("hostName"));
-  const code = s(formData.get("code")).toUpperCase().replace(/\s+/g, "");
+/**
+ * Shared logic (used by both actions)
+ */
+async function startCheckoutInternal(hostName: string, codeRaw: string) {
+  const code = codeRaw.toUpperCase().replace(/\s+/g, "");
 
-  if (hostName.length < 2) redirect("/host?flash=bad_host");
-  if (!code) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=code_missing`);
+  if (hostName.length < 2) return { ok: false as const, flash: "bad_host", guest: "" };
+  if (!code) return { ok: false as const, flash: "code_missing", guest: "" };
 
   const storeRaw = await readStore();
   const store = ensureArrays(storeRaw);
 
   const v = store.visitors.find(
-    (x: any) => !x.checkedOutAt && ((x.inviteCode as string) || "").toUpperCase() === code
+    (x: any) => !x.checkedOutAt && (((x.inviteCode as string) || "").toUpperCase() === code)
   );
 
-  if (!v) {
-    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=visitor_notfound`);
-  }
+  if (!v) return { ok: false as const, flash: "visitor_notfound", guest: "" };
 
   const existingActiveReq = store.checkoutRequests.find(
     (r: CheckoutRequest) => r.visitorId === v.id && r.status === "requested"
   );
 
   if (existingActiveReq) {
-    redirect(
-      `/host?host=${encodeURIComponent(hostName)}&flash=checkout_already&guest=${encodeURIComponent(v.fullName || "")}`
-    );
+    return { ok: true as const, flash: "checkout_already", guest: (v.fullName || "").toString() };
   }
 
   const req: CheckoutRequest = {
@@ -157,7 +154,40 @@ export async function hostStartCheckout(formData: FormData) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  redirect(
-    `/host?host=${encodeURIComponent(hostName)}&flash=checkout_started&guest=${encodeURIComponent(v.fullName || "")}`
-  );
+  return { ok: true as const, flash: "checkout_started", guest: (v.fullName || "").toString() };
+}
+
+/**
+ * Use this for client “instant” button (NO redirect)
+ */
+export async function hostStartCheckoutLive(formData: FormData) {
+  const hostName = s(formData.get("hostName"));
+  const code = s(formData.get("code"));
+  return startCheckoutInternal(hostName, code);
+}
+
+/**
+ * Keep this for classic <form action={hostStartCheckout}> flows (WITH redirect + toast)
+ */
+export async function hostStartCheckout(formData: FormData) {
+  const hostName = s(formData.get("hostName"));
+  const code = s(formData.get("code"));
+
+  const res = await startCheckoutInternal(hostName, code);
+
+  if (!res.ok) {
+    if (res.flash === "code_missing") {
+      redirect(`/host?host=${encodeURIComponent(hostName)}&flash=code_missing`);
+    }
+    if (res.flash === "visitor_notfound") {
+      redirect(`/host?host=${encodeURIComponent(hostName)}&flash=visitor_notfound`);
+    }
+    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_host`);
+  }
+
+  if (res.flash === "checkout_already") {
+    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_already&guest=${encodeURIComponent(res.guest || "")}`);
+  }
+
+  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_started&guest=${encodeURIComponent(res.guest || "")}`);
 }

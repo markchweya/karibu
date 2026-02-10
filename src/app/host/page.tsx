@@ -1,8 +1,9 @@
 ﻿import Link from "next/link";
 import ToastBar from "@/components/ToastBar";
 import type { ReactNode } from "react";
-import { hostCancelInvite, hostCreateInvite, hostStartCheckout } from "./actions";
-import { readStore, s, todayISO, fmt, initials, normKey, ms } from "@/lib/karibuStore";
+import { hostCreateInvite } from "./actions";
+import { readStore, s, todayISO, normKey, ms } from "@/lib/karibuStore";
+import HostLiveClient from "./HostLiveClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,14 +12,20 @@ type Tone = "slate" | "blue" | "gold" | "green" | "red";
 
 function Pill({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }) {
   const tones: Record<string, string> = {
-    slate: "border-slate-200 bg-white/70 text-slate-700",
-    blue: "border-[rgba(32,48,144,0.22)] bg-[rgba(32,48,144,0.08)] text-[#203090]",
-    gold: "border-[rgba(240,192,0,0.40)] bg-[rgba(240,192,0,0.14)] text-slate-900",
-    green: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    red: "border-red-200 bg-red-50 text-red-700",
+    slate: "border-white/50 bg-white/70 text-slate-700",
+    blue: "border-[rgba(32,48,144,0.18)] bg-[rgba(32,48,144,0.07)] text-[#203090]",
+    gold: "border-[rgba(240,192,0,0.35)] bg-[rgba(240,192,0,0.13)] text-slate-900",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    red: "border-red-200 bg-red-50 text-red-800",
   };
+
   return (
-    <span className={["inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur", tones[tone] ?? tones.slate].join(" ")}>
+    <span
+      className={[
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur",
+        tones[tone] ?? tones.slate,
+      ].join(" ")}
+    >
       {children}
     </span>
   );
@@ -26,10 +33,14 @@ function Pill({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }
 
 function CardShell({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-[28px] border border-white/40 bg-white/75 shadow-[0_26px_80px_rgba(2,6,23,0.10)] backdrop-blur-xl">
+    <div className="rounded-[28px] border border-white/40 bg-white/70 shadow-[0_26px_80px_rgba(2,6,23,0.10)] backdrop-blur-xl">
       {children}
     </div>
   );
+}
+
+function safeArr<T>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
 }
 
 function flashMeta(code: string) {
@@ -39,9 +50,9 @@ function flashMeta(code: string) {
     case "cancelled":
       return { tone: "green" as const, title: "Invite cancelled", body: "This slot is now free again." };
     case "checkout_started":
-      return { tone: "blue" as const, title: "Checkout clock started", body: "Security has been notified. Visitor has 10 minutes to reach the gate." };
+      return { tone: "blue" as const, title: "Checkout started", body: "Timer started. Visitor has 10 minutes to reach the gate." };
     case "checkout_already":
-      return { tone: "gold" as const, title: "Already started", body: "A checkout clock is already running for this visitor." };
+      return { tone: "gold" as const, title: "Already started", body: "A checkout timer is already running for this visitor." };
     case "visitor_notfound":
       return { tone: "red" as const, title: "Not found", body: "That code is not an active checked-in visitor yet." };
     case "code_missing":
@@ -53,81 +64,156 @@ function flashMeta(code: string) {
   }
 }
 
-function statusTone(status?: string): Tone {
-  if (status === "pending") return "gold";
-  if (status === "checkedin") return "green";
-  if (status === "cancelled") return "red";
-  return "slate";
+function hrefHost(host: string) {
+  return host ? `/host?host=${encodeURIComponent(host)}` : "/host";
 }
 
-function statusLabel(status?: string) {
-  if (status === "pending") return "Pending";
-  if (status === "checkedin") return "Checked in";
-  if (status === "cancelled") return "Cancelled";
-  return status || "Unknown";
+function asDateISO(x: any) {
+  const n = ms(x);
+  if (!n) return "";
+  try {
+    return new Date(n).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
 }
 
-function maskId(id?: string) {
-  if (!id) return "";
-  const t = id.trim();
-  if (t.length <= 4) return t;
-  return `${"*".repeat(Math.max(0, t.length - 4))}${t.slice(-4)}`;
+function getInviteHostName(inv: any) {
+  return (inv?.hostName || inv?.host || inv?.host_full_name || "").toString().trim();
 }
 
-export default async function HostPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+function getInviteHostKey(inv: any) {
+  return (inv?.hostKey || inv?.host_key || "").toString().trim();
+}
+
+function getVisitorHostName(v: any) {
+  return (v?.hostName || v?.host || v?.host_full_name || "").toString().trim();
+}
+
+function getVisitorHostKey(v: any) {
+  return (v?.hostKey || v?.host_key || "").toString().trim();
+}
+
+function getVisitorCode(v: any) {
+  return (v?.inviteCode || v?.code || v?.visitorCode || v?.passCode || "").toString().trim().toUpperCase();
+}
+
+function isCheckedOut(v: any) {
+  return Boolean(v?.checkedOutAt || v?.checkoutAt || v?.checked_out_at || v?.checkedOut);
+}
+
+function isInviteVisitor(v: any) {
+  const k = (v?.kind || v?.type || "").toString().toLowerCase();
+  if (!k) return true;
+  return k === "invite" || k === "invited" || k === "invitation";
+}
+
+function getReqHostKey(r: any) {
+  return (r?.hostKey || "").toString().trim();
+}
+
+function getReqHostName(r: any) {
+  return (r?.hostName || "").toString().trim();
+}
+
+function getReqCode(r: any) {
+  return (r?.inviteCode || r?.code || r?.visitorCode || "").toString().trim().toUpperCase();
+}
+
+export default async function HostPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await Promise.resolve(searchParams as any);
+
   const store = await readStore();
+  const invites = safeArr<any>(store?.invites);
+  const visitors = safeArr<any>(store?.visitors);
+  const checkoutRequests = safeArr<any>(store?.checkoutRequests);
 
-  const host = s(searchParams.host);
-  const flash = s(searchParams.flash);
-  const guest = s(searchParams.guest);
-  const toast = flash ? flashMeta(flash) : null;
-
+  const rawHost = s(sp.host);
   const today = todayISO();
+
+  const invitesToday = invites
+    .filter((i: any) => {
+      const forDate = (i?.forDate || "").toString().trim();
+      if (forDate) return forDate === today;
+      const createdIso = asDateISO(i?.createdAt);
+      if (createdIso) return createdIso === today;
+      const updatedIso = asDateISO(i?.updatedAt);
+      if (updatedIso) return updatedIso === today;
+      return true;
+    })
+    .slice()
+    .sort((a: any, b: any) => {
+      const ta = a?.createdAt ? Date.parse(a.createdAt) : 0;
+      const tb = b?.createdAt ? Date.parse(b.createdAt) : 0;
+      return tb - ta;
+    });
+
+  const hostsToday = Array.from(
+    new Map(
+      invitesToday
+        .map((i: any) => getInviteHostName(i))
+        .filter(Boolean)
+        .map((name: string) => [normKey(name), name] as const)
+    ).values()
+  );
+
+  const host = rawHost || (hostsToday.length === 1 ? hostsToday[0] : "");
   const hostKey = host ? normKey(host) : "";
 
-  const invitesTodayMine = hostKey
-    ? store.invites
-        .filter((i) => i.forDate === today && i.hostKey === hostKey)
-        .slice()
-        .sort((a: any, b: any) => {
-          const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-          const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-          return tb - ta;
-        })
-    : [];
-
-  const pendingMine = invitesTodayMine.filter((i) => i.status === "pending");
-  const checkedInMine = invitesTodayMine.filter((i) => i.status === "checkedin");
-  const cancelledMine = invitesTodayMine.filter((i) => i.status === "cancelled");
+  const flash = s(sp.flash);
+  const guest = s(sp.guest);
+  const toast = flash ? flashMeta(flash) : null;
 
   const activeVisitsMine = hostKey
-    ? store.visitors.filter((v) => !v.checkedOutAt && v.kind === "invite" && normKey(v.hostName || "") === hostKey)
+    ? visitors.filter((v: any) => {
+        const hk = getVisitorHostKey(v);
+        const hn = getVisitorHostName(v);
+        const matchesHost = (hk && hk === hostKey) || normKey(hn || "") === hostKey;
+        if (!matchesHost) return false;
+        if (!isInviteVisitor(v)) return false;
+        if (isCheckedOut(v)) return false;
+        return true;
+      })
     : [];
+
+  const activeCodes = new Set<string>(activeVisitsMine.map((v: any) => getVisitorCode(v)).filter(Boolean));
 
   const now = Date.now();
   const hostReminders = hostKey
-    ? (store.checkoutRequests || [])
-        .filter((r: any) => r.status === "requested" && r.hostKey === hostKey)
-        .filter((r: any) => now - ms(r.requestedAt) >= 10 * 60 * 1000)
+    ? checkoutRequests
+        .filter(
+          (r: any) =>
+            r?.status === "requested" &&
+            ((getReqHostKey(r) && getReqHostKey(r) === hostKey) || normKey(getReqHostName(r)) === hostKey)
+        )
+        .filter((r: any) => activeCodes.has(getReqCode(r)))
+        .filter((r: any) => now - ms(r?.requestedAt) >= 10 * 60 * 1000)
     : [];
 
   return (
-    <div className="relative min-h-screen bg-[#f9fafc] text-slate-900">
+    <div className="relative min-h-screen text-slate-900">
       {toast ? <ToastBar tone={toast.tone} title={toast.title} body={toast.body + (guest ? ` (${guest})` : "")} ms={5000} /> : null}
 
+      {/* Background like Security (soft cream + gold + blue) */}
       <div className="pointer-events-none fixed inset-0">
-        <div className="absolute -top-48 left-[-20%] h-[620px] w-[620px] rounded-full bg-[rgba(32,48,144,0.14)] blur-[120px]" />
-        <div className="absolute -top-64 right-[-15%] h-[680px] w-[680px] rounded-full bg-[rgba(240,192,0,0.18)] blur-[140px]" />
-        <div className="absolute bottom-[-30%] left-[20%] h-[600px] w-[600px] rounded-full bg-[rgba(32,48,144,0.12)] blur-[140px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_520px_at_50%_0%,rgba(2,6,23,0.05),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[#f8f6f1]" />
+        <div className="absolute -top-52 -left-24 h-[620px] w-[620px] rounded-full bg-[rgba(32,48,144,0.12)] blur-[120px]" />
+        <div className="absolute -top-56 -right-32 h-[720px] w-[720px] rounded-full bg-[rgba(240,192,0,0.18)] blur-[140px]" />
+        <div className="absolute bottom-[-35%] left-[18%] h-[720px] w-[720px] rounded-full bg-[rgba(240,192,0,0.12)] blur-[160px]" />
+        <div className="absolute bottom-[-40%] right-[10%] h-[640px] w-[640px] rounded-full bg-[rgba(32,48,144,0.10)] blur-[160px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(1200px_520px_at_50%_0%,rgba(2,6,23,0.06),transparent_60%)]" />
       </div>
 
-      <header className="relative z-10 border-b border-slate-200/70 bg-white/70 backdrop-blur">
+      <header className="relative z-20 border-b border-white/40 bg-white/65 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[rgba(32,48,144,0.12)]">
-                <span className="h-3 w-3 rounded-full bg-[#F0C000] shadow-[0_8px_30px_rgba(240,192,0,0.5)]" />
+            <Link href={hrefHost(host)} className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/70 shadow-sm">
+                <span className="h-3 w-3 rounded-full bg-[#F0C000] shadow-[0_10px_35px_rgba(240,192,0,0.45)]" />
               </span>
               <div className="leading-tight">
                 <div className="text-[15px] font-semibold">Karibu</div>
@@ -135,14 +221,18 @@ export default async function HostPage({ searchParams }: { searchParams: Record<
               </div>
             </Link>
 
-            <div className="hidden md:flex items-center gap-2 ml-2">
+            <div className="hidden md:flex items-center gap-2 ml-3">
               <Pill tone="blue">USIU</Pill>
-              <Pill tone="gold">Invites</Pill>
+              <Pill tone="gold">{host ? "Host" : "Pick host"}</Pill>
+              {host ? <Pill tone="slate">{host}</Pill> : null}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/security" className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">
+            <Link
+              href={host ? `/security?host=${encodeURIComponent(host)}` : "/security"}
+              className="rounded-full border border-white/60 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+            >
               Security
             </Link>
           </div>
@@ -151,175 +241,61 @@ export default async function HostPage({ searchParams }: { searchParams: Record<
 
       <main className="relative z-10">
         <div className="mx-auto max-w-7xl px-6 pb-12 pt-8 space-y-8">
-          {/* Notifications (Host) */}
-          <section>
-            <CardShell>
-              <div className="border-b border-white/50 p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Notifications</div>
-                    <div className="mt-1 text-2xl font-semibold tracking-tight">Host reminders</div>
-                    <p className="mt-2 text-sm text-slate-600">If 10 minutes pass and Security has not finalized checkout, you’ll see it here.</p>
-                  </div>
-                  <Pill tone={hostReminders.length ? "gold" : "green"}>{hostReminders.length} pending</Pill>
+          {/* Host picker */}
+          {!host ? (
+            <section>
+              <CardShell>
+                <div className="p-6">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Select host</div>
+                  <div className="mt-1 text-2xl font-semibold tracking-tight">Who are you</div>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Your invites are already saved and Security can see them. To load your contact cards, pick your host name below.
+                  </p>
+
+                  {hostsToday.length === 0 ? (
+                    <div className="mt-5 rounded-[26px] border border-white/50 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
+                      No invites exist yet today.
+                    </div>
+                  ) : (
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {hostsToday.map((h) => (
+                        <Link
+                          key={h}
+                          href={`/host?host=${encodeURIComponent(h)}`}
+                          className="rounded-full border border-white/60 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-white"
+                        >
+                          {h}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              </CardShell>
+            </section>
+          ) : null}
 
-              <div className="p-6">
-                {!hostKey ? (
-                  <div className="rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
-                    Open with <span className="font-semibold">/host?host=YourName</span> so we can load your invites.
-                  </div>
-                ) : hostReminders.length === 0 ? (
-                  <div className="rounded-[26px] border border-emerald-200 bg-emerald-50 px-5 py-6 text-sm text-emerald-900 shadow-sm backdrop-blur">
-                    All good  no overdue checkouts.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {hostReminders.map((r: any) => (
-                      <div key={r.id} className="rounded-[26px] border border-[rgba(240,192,0,0.45)] bg-[rgba(240,192,0,0.10)] p-5">
-                        <div className="text-sm font-semibold">{r.visitorName}</div>
-                        <div className="mt-1 text-xs text-slate-700/80">
-                          Checkout clock started at <span className="font-semibold">{fmt(r.requestedAt)}</span>
-                        </div>
-                        <div className="mt-3 text-sm text-slate-800">Security hasn’t confirmed checkout yet. Please check up on the visitor.</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardShell>
-          </section>
-
-          {/* Invite contact cards (THIS is what you were missing) */}
+          {/* Create invite (kept) */}
           <section>
             <CardShell>
-              <div className="border-b border-white/50 p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="p-6">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Today</div>
-                    <div className="mt-1 text-2xl font-semibold tracking-tight">Your invite contact cards</div>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Pending shows immediately after you create invite. Once Security checks them in, it changes to Checked in and they also show under Active visitors.
-                    </p>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Create invite</div>
+                    <div className="mt-1 text-2xl font-semibold tracking-tight">Invite a visitor</div>
+                    <div className="mt-2 text-sm text-slate-600">This shows on Security immediately.</div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Pill tone={pendingMine.length ? "gold" : "green"}>{pendingMine.length} pending</Pill>
-                    <Pill tone={checkedInMine.length ? "green" : "slate"}>{checkedInMine.length} checked in</Pill>
-                    <Pill tone={cancelledMine.length ? "red" : "slate"}>{cancelledMine.length} cancelled</Pill>
-                  </div>
+                  <div className="mt-1">{host ? <Pill tone="green">Active host: {host}</Pill> : <Pill tone="gold">No host selected</Pill>}</div>
                 </div>
-              </div>
-
-              <div className="p-6">
-                {!hostKey ? (
-                  <div className="rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
-                    Open with <span className="font-semibold">/host?host=YourName</span> so we can load your invites.
-                  </div>
-                ) : invitesTodayMine.length === 0 ? (
-                  <div className="rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
-                    No invites created yet for today.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {invitesTodayMine.map((inv: any) => {
-                      const code = (inv.code || "").toUpperCase();
-                      const visitorName = inv.visitorName || "Unknown visitor";
-                      const idMasked = maskId(inv.visitorIdNumber || "");
-                      const checkedInAt = inv.checkedInAt ? fmt(inv.checkedInAt) : "";
-
-                      return (
-                        <div key={inv.id} className="relative overflow-hidden rounded-[26px] border border-white/40 bg-white/80 p-5 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl">
-                          <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,rgba(240,192,0,0.55),rgba(32,48,144,0.35),transparent)]" />
-
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[rgba(32,48,144,0.10)] text-[#203090] font-bold">
-                                {initials(visitorName)}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold">{visitorName}</div>
-                                <div className="mt-0.5 truncate text-xs text-slate-500">
-                                  ID: <span className="font-semibold text-slate-700">{idMasked || "-"}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <Pill tone={statusTone(inv.status)}>{statusLabel(inv.status)}</Pill>
-                          </div>
-
-                          <div className="mt-3 space-y-1 text-sm text-slate-700">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-slate-500">Code</span>
-                              <span className="font-semibold text-slate-900 uppercase tracking-widest">{code || "-"}</span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-slate-500">Purpose</span>
-                              <span className="font-semibold text-slate-800 truncate">{inv.purpose || "-"}</span>
-                            </div>
-
-                            {inv.destination ? (
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-slate-500">Destination</span>
-                                <span className="font-semibold text-slate-800 truncate">{inv.destination}</span>
-                              </div>
-                            ) : null}
-
-                            {inv.status === "checkedin" ? (
-                              <div className="flex items-center justify-between gap-3 pt-1">
-                                <span className="text-slate-500">Checked in at</span>
-                                <span className="font-semibold text-slate-800">{checkedInAt || "-"}</span>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-end gap-2">
-                            {inv.status === "pending" ? (
-                              <form action={hostCancelInvite}>
-                                <input type="hidden" name="hostName" value={host || ""} />
-                                <input type="hidden" name="inviteId" value={inv.id} />
-                                <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">
-                                  Cancel invite
-                                </button>
-                              </form>
-                            ) : null}
-
-                            {inv.status === "checkedin" ? (
-                              <form action={hostStartCheckout}>
-                                <input type="hidden" name="hostName" value={host || ""} />
-                                <input type="hidden" name="code" value={code} />
-                                <button className="rounded-full bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_35px_rgba(32,48,144,0.20)] transition hover:shadow-[0_20px_45px_rgba(32,48,144,0.26)]">
-                                  Start checkout
-                                </button>
-                              </form>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </CardShell>
-          </section>
-
-          {/* Create invite */}
-          <section>
-            <CardShell>
-              <div className="p-6">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Create an invite</div>
-                <div className="mt-1 text-2xl font-semibold tracking-tight">Invite a visitor</div>
 
                 <form action={hostCreateInvite} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12">
                   <div className="md:col-span-4">
-                    <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Your name (Host)</label>
+                    <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Host name</label>
                     <input
                       name="hostName"
                       required
                       defaultValue={host || ""}
                       placeholder="e.g. Mr. Otieno"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                      className="mt-2 w-full rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.35)] focus:ring-4 focus:ring-[rgba(32,48,144,0.10)]"
                     />
                   </div>
 
@@ -329,7 +305,7 @@ export default async function HostPage({ searchParams }: { searchParams: Record<
                       name="visitorName"
                       required
                       placeholder="e.g. Jane Wanjiku"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                      className="mt-2 w-full rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.35)] focus:ring-4 focus:ring-[rgba(32,48,144,0.10)]"
                     />
                   </div>
 
@@ -339,22 +315,31 @@ export default async function HostPage({ searchParams }: { searchParams: Record<
                       name="visitorIdNumber"
                       required
                       placeholder="e.g. 12345678"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                      className="mt-2 w-full rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.35)] focus:ring-4 focus:ring-[rgba(32,48,144,0.10)]"
                     />
                   </div>
 
-                  <div className="md:col-span-12">
+                  <div className="md:col-span-8">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Purpose</label>
                     <input
                       name="purpose"
                       required
                       placeholder="e.g. Meeting / Admission / Lecture / Delivery"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
+                      className="mt-2 w-full rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.35)] focus:ring-4 focus:ring-[rgba(32,48,144,0.10)]"
+                    />
+                  </div>
+
+                  <div className="md:col-span-4">
+                    <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Destination</label>
+                    <input
+                      name="destination"
+                      placeholder="e.g. Admin block / ICT / Library"
+                      className="mt-2 w-full rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm outline-none transition focus:border-[rgba(32,48,144,0.35)] focus:ring-4 focus:ring-[rgba(32,48,144,0.10)]"
                     />
                   </div>
 
                   <div className="md:col-span-12 flex justify-end">
-                    <button className="w-full md:w-auto rounded-2xl bg-[#F0C000] px-7 py-3.5 text-[15px] font-semibold text-slate-900 shadow-sm transition hover:brightness-[0.98]">
+                    <button className="w-full md:w-auto rounded-2xl bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_45px_rgba(32,48,144,0.20)] transition hover:shadow-[0_24px_60px_rgba(32,48,144,0.28)]">
                       Create Invite
                     </button>
                   </div>
@@ -363,88 +348,23 @@ export default async function HostPage({ searchParams }: { searchParams: Record<
             </CardShell>
           </section>
 
-          {/* Start checkout + Active visitors (checked in) */}
-          <section>
-            <CardShell>
-              <div className="border-b border-white/50 p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Checkout</div>
-                    <div className="mt-1 text-2xl font-semibold tracking-tight">Start the 10-minute exit clock</div>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Active visitors here are only the ones Security has already checked in.
-                    </p>
-                  </div>
-                  <Pill tone="blue">Host  Security</Pill>
-                </div>
+          {/* Live client section */}
+          <HostLiveClient
+            host={host}
+            hostKey={hostKey}
+            invitesToday={invitesToday}
+            visitors={visitors}
+            checkoutRequests={checkoutRequests}
+            pollMs={6000}
+          />
 
-                <form action={hostStartCheckout} className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-12">
-                  <input type="hidden" name="hostName" value={host} />
-                  <div className="sm:col-span-8">
-                    <input
-                      name="code"
-                      required
-                      placeholder="Visitor code e.g. 7H3K2QZ"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm uppercase tracking-widest outline-none transition focus:border-[rgba(32,48,144,0.45)] focus:ring-4 focus:ring-[rgba(32,48,144,0.12)]"
-                    />
-                  </div>
-                  <div className="sm:col-span-4">
-                    <button className="w-full rounded-2xl bg-[linear-gradient(135deg,#203090_0%,#0b1a66_55%,#203090_100%)] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(32,48,144,0.22)] transition hover:shadow-[0_24px_60px_rgba(32,48,144,0.30)]">
-                      Start checkout
-                    </button>
-                  </div>
-                </form>
-
-                <div className="mt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Your active visitors (checked in)</div>
-                    <Pill tone="gold">{activeVisitsMine.length} active</Pill>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {!hostKey ? (
-                      <div className="sm:col-span-2 rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
-                        Open with <span className="font-semibold">/host?host=YourName</span> to see your active visitors.
-                      </div>
-                    ) : activeVisitsMine.length === 0 ? (
-                      <div className="sm:col-span-2 rounded-[26px] border border-slate-200 bg-white/70 px-5 py-6 text-sm text-slate-600 shadow-sm backdrop-blur">
-                        No active visitors yet. If you already created an invite, it will show above as Pending until Security checks them in.
-                      </div>
-                    ) : (
-                      activeVisitsMine.map((v) => (
-                        <div key={v.id} className="rounded-[26px] border border-white/40 bg-white/80 p-5 shadow-[0_18px_55px_rgba(2,6,23,0.10)] backdrop-blur-xl">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[rgba(32,48,144,0.10)] text-[#203090] font-bold">
-                                {initials(v.fullName)}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold">{v.fullName}</div>
-                                <div className="mt-0.5 truncate text-xs text-slate-500">
-                                  Code: <span className="font-semibold text-slate-700 tracking-widest">{v.inviteCode}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {v.checkoutRequestedAt ? <Pill tone="gold">Checkout started</Pill> : <Pill tone="blue">Active</Pill>}
-                          </div>
-
-                          <div className="mt-3 text-sm text-slate-700">
-                            Purpose: <span className="font-semibold">{v.purpose || "-"}</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </CardShell>
-          </section>
+          {/* Reminders count stays available for UI (if you use it inside HostLiveClient later) */}
+          <div className="hidden">{hostReminders.length}</div>
         </div>
       </main>
 
       <footer className="relative z-10">
-        <div className="mx-auto max-w-7xl px-6 py-10 text-xs text-slate-500">Karibu  Host Portal  MVP</div>
+        <div className="mx-auto max-w-7xl px-6 py-10 text-xs text-slate-500">Karibu Host Portal MVP</div>
       </footer>
     </div>
   );

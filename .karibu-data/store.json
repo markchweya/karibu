@@ -1,6 +1,38 @@
 {
   "visitors": [
     {
+      "id": "a19afc0a-4d0c-4d08-a2d9-83aa4985feb7",
+      "kind": "invite",
+      "idNumber": "239182",
+      "fullName": "Mark Chweya",
+      "purpose": "Meeting",
+      "hostName": "Otieno",
+      "inviteCode": "JX3H2AW",
+      "inviteId": "d06a579a-d697-4744-879d-bf918c9aabe0",
+      "decision": "approved",
+      "createdAt": "2026-02-10T09:42:12.334Z",
+      "checkoutRequestedAt": "2026-02-10T09:44:32.125Z",
+      "checkoutRequestedBy": "Otieno",
+      "checkoutRequestId": "542b1779-27aa-4157-a56a-2e3e74c78705",
+      "checkedOutAt": "2026-02-10T10:09:23.196Z"
+    },
+    {
+      "id": "cb91cfbf-c252-4cf9-97d6-33800e2e73e5",
+      "kind": "invite",
+      "idNumber": "129821",
+      "fullName": "Hawi Snakd",
+      "purpose": "Meeting",
+      "hostName": "Garl Gogo",
+      "inviteCode": "XZGADYR",
+      "inviteId": "de561250-7c70-4a17-8b2e-5066e06de0a3",
+      "decision": "approved",
+      "createdAt": "2026-02-10T09:42:09.200Z",
+      "checkoutRequestedAt": "2026-02-10T09:42:32.290Z",
+      "checkoutRequestedBy": "Garl Gogo",
+      "checkoutRequestId": "899ffbbd-3286-42c3-a877-d7a4ba2ebd5c",
+      "checkedOutAt": "2026-02-10T09:43:41.727Z"
+    },
+    {
       "id": "3e5af0be-9262-49ba-bd69-9a4bbef04605",
       "kind": "invite",
       "idNumber": "445687",
@@ -10,7 +42,8 @@
       "inviteCode": "28PBC3A",
       "inviteId": "ea08d28a-85e1-49ca-b4a2-10e83227ce31",
       "decision": "approved",
-      "createdAt": "2026-02-08T18:28:37.567Z"
+      "createdAt": "2026-02-08T18:28:37.567Z",
+      "checkedOutAt": "2026-02-10T10:27:33.113Z"
     },
     {
       "id": "32a7f99e-0850-4d11-93d4-c1c76e1153f0",
@@ -28,6 +61,32 @@
     }
   ],
   "invites": [
+    {
+      "id": "d06a579a-d697-4744-879d-bf918c9aabe0",
+      "code": "JX3H2AW",
+      "hostName": "Otieno",
+      "hostKey": "otieno",
+      "visitorName": "Mark Chweya",
+      "visitorIdNumber": "239182",
+      "purpose": "Meeting",
+      "forDate": "2026-02-10",
+      "createdAt": "2026-02-10T09:27:16.759Z",
+      "status": "checkedin",
+      "checkedInAt": "2026-02-10T09:42:12.334Z"
+    },
+    {
+      "id": "de561250-7c70-4a17-8b2e-5066e06de0a3",
+      "code": "XZGADYR",
+      "hostName": "Garl Gogo",
+      "hostKey": "garl_gogo",
+      "visitorName": "Hawi Snakd",
+      "visitorIdNumber": "129821",
+      "purpose": "Meeting",
+      "forDate": "2026-02-10",
+      "createdAt": "2026-02-10T09:15:33.546Z",
+      "status": "checkedin",
+      "checkedInAt": "2026-02-10T09:42:09.200Z"
+    },
     {
       "id": "1f3f1f7b-db24-46c8-a7e2-dfaf1c47b481",
       "code": "AQK2CMD",
@@ -104,5 +163,28 @@
       "checkedInAt": "2026-01-31T19:52:16.141Z"
     }
   ],
-  "checkoutRequests": []
+  "checkoutRequests": [
+    {
+      "id": "542b1779-27aa-4157-a56a-2e3e74c78705",
+      "visitorId": "a19afc0a-4d0c-4d08-a2d9-83aa4985feb7",
+      "visitorName": "Mark Chweya",
+      "visitorIdNumber": "239182",
+      "hostName": "Otieno",
+      "hostKey": "otieno",
+      "inviteCode": "JX3H2AW",
+      "requestedAt": "2026-02-10T09:44:32.125Z",
+      "status": "requested"
+    },
+    {
+      "id": "899ffbbd-3286-42c3-a877-d7a4ba2ebd5c",
+      "visitorId": "cb91cfbf-c252-4cf9-97d6-33800e2e73e5",
+      "visitorName": "Hawi Snakd",
+      "visitorIdNumber": "129821",
+      "hostName": "Garl Gogo",
+      "hostKey": "garl_gogo",
+      "inviteCode": "XZGADYR",
+      "requestedAt": "2026-02-10T09:42:32.290Z",
+      "status": "requested"
+    }
+  ]
 }
