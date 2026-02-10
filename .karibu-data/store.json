@@ -1,6 +1,39 @@
 {
   "visitors": [
     {
+      "id": "0de1d41f-a7bf-4ed5-9ba9-800ae213b0ed",
+      "kind": "invite",
+      "idNumber": "239810",
+      "fullName": "Sandra Hawii",
+      "destination": "Admin",
+      "purpose": "Delivery",
+      "hostName": "host",
+      "inviteCode": "3EBATHA",
+      "inviteId": "be6976bd-d36d-43f3-bdbf-120512ee1ecc",
+      "decision": "approved",
+      "createdAt": "2026-02-10T19:59:53.831Z",
+      "checkoutRequestedAt": "2026-02-10T20:03:48.389Z",
+      "checkoutRequestedBy": "host",
+      "checkoutRequestId": "fccaa3e9-96c2-45a4-ab30-77a0292a951a"
+    },
+    {
+      "id": "c0447b46-0c68-49e8-9d10-cb3c7102e87a",
+      "kind": "invite",
+      "idNumber": "223920",
+      "fullName": "Hawii",
+      "destination": "Admin",
+      "purpose": "Delivery",
+      "hostName": "Otieno",
+      "inviteCode": "JB5FBAH",
+      "inviteId": "33e0d732-50ff-4ac1-a158-8ac49213b427",
+      "decision": "approved",
+      "createdAt": "2026-02-10T12:28:49.393Z",
+      "checkoutRequestedAt": "2026-02-10T12:29:04.345Z",
+      "checkoutRequestedBy": "Otieno",
+      "checkoutRequestId": "dc5b5848-584e-4440-bf8e-5a09708d8edf",
+      "checkedOutAt": "2026-02-10T12:45:04.886Z"
+    },
+    {
       "id": "a19afc0a-4d0c-4d08-a2d9-83aa4985feb7",
       "kind": "invite",
       "idNumber": "239182",
@@ -61,6 +94,34 @@
     }
   ],
   "invites": [
+    {
+      "id": "be6976bd-d36d-43f3-bdbf-120512ee1ecc",
+      "code": "3EBATHA",
+      "hostName": "host",
+      "hostKey": "host",
+      "visitorName": "Sandra Hawii",
+      "visitorIdNumber": "239810",
+      "purpose": "Delivery",
+      "destination": "Admin",
+      "forDate": "2026-02-10",
+      "createdAt": "2026-02-10T19:59:35.054Z",
+      "status": "checkedin",
+      "checkedInAt": "2026-02-10T19:59:53.831Z"
+    },
+    {
+      "id": "33e0d732-50ff-4ac1-a158-8ac49213b427",
+      "code": "JB5FBAH",
+      "hostName": "Otieno",
+      "hostKey": "otieno",
+      "visitorName": "Hawii",
+      "visitorIdNumber": "223920",
+      "purpose": "Delivery",
+      "destination": "Admin",
+      "forDate": "2026-02-10",
+      "createdAt": "2026-02-10T12:27:57.635Z",
+      "status": "checkedin",
+      "checkedInAt": "2026-02-10T12:28:49.393Z"
+    },
     {
       "id": "d06a579a-d697-4744-879d-bf918c9aabe0",
       "code": "JX3H2AW",
@@ -164,6 +225,28 @@
     }
   ],
   "checkoutRequests": [
+    {
+      "id": "fccaa3e9-96c2-45a4-ab30-77a0292a951a",
+      "visitorId": "0de1d41f-a7bf-4ed5-9ba9-800ae213b0ed",
+      "visitorName": "Sandra Hawii",
+      "visitorIdNumber": "239810",
+      "hostName": "host",
+      "hostKey": "host",
+      "inviteCode": "3EBATHA",
+      "requestedAt": "2026-02-10T20:03:48.389Z",
+      "status": "requested"
+    },
+    {
+      "id": "dc5b5848-584e-4440-bf8e-5a09708d8edf",
+      "visitorId": "c0447b46-0c68-49e8-9d10-cb3c7102e87a",
+      "visitorName": "Hawii",
+      "visitorIdNumber": "223920",
+      "hostName": "Otieno",
+      "hostKey": "otieno",
+      "inviteCode": "JB5FBAH",
+      "requestedAt": "2026-02-10T12:29:04.345Z",
+      "status": "requested"
+    },
     {
       "id": "542b1779-27aa-4157-a56a-2e3e74c78705",
       "visitorId": "a19afc0a-4d0c-4d08-a2d9-83aa4985feb7",

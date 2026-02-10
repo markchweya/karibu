@@ -14,6 +14,7 @@ import {
   type Invite,
   type CheckoutRequest,
 } from "@/lib/karibuStore";
+import { getCurrentHost } from "@/lib/karibuSession";
 
 const MAX_INVITES_PER_HOST_PER_DAY = 4;
 
@@ -25,16 +26,18 @@ function ensureArrays(store: any) {
 }
 
 export async function hostCreateInvite(formData: FormData) {
-  const hostName = s(formData.get("hostName"));
+  const sessionHost = await getCurrentHost();
+
+  const hostName = s(formData.get("hostName")) || sessionHost.name;
   const visitorName = s(formData.get("visitorName"));
   const visitorIdNumber = s(formData.get("visitorIdNumber"));
   const purpose = s(formData.get("purpose"));
   const destination = s(formData.get("destination"));
 
   if (hostName.length < 2) redirect("/host?flash=bad_host");
-  if (visitorName.length < 2) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_name`);
-  if (visitorIdNumber.length < 4) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_id`);
-  if (purpose.length < 2) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_purpose`);
+  if (visitorName.length < 2) redirect("/host?flash=bad_name");
+  if (visitorIdNumber.length < 4) redirect("/host?flash=bad_id");
+  if (purpose.length < 2) redirect("/host?flash=bad_purpose");
 
   const storeRaw = await readStore();
   const store = ensureArrays(storeRaw);
@@ -43,19 +46,27 @@ export async function hostCreateInvite(formData: FormData) {
   const hostKey = normKey(hostName);
 
   const todays = store.invites.filter(
-    (i: Invite) => i.forDate === forDate && i.hostKey === hostKey && i.status !== "cancelled"
+    (i: Invite) =>
+      i.forDate === forDate &&
+      (i.hostKey === hostKey || normKey(i.hostName) === hostKey) &&
+      i.status !== "cancelled"
   );
 
   if (todays.length >= MAX_INVITES_PER_HOST_PER_DAY) {
-    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=limit`);
+    redirect("/host?flash=limit");
   }
 
-  const dup = todays.some((i: Invite) => i.visitorIdNumber === visitorIdNumber && i.status === "pending");
-  if (dup) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=dup_invite`);
+  const dup = todays.some(
+    (i: Invite) =>
+      i.visitorIdNumber === visitorIdNumber && i.status === "pending"
+  );
+  if (dup) redirect("/host?flash=dup_invite");
 
   const existingCodes = new Set<string>([
     ...store.invites.map((x: Invite) => (x.code || "").toUpperCase()),
-    ...store.visitors.map((x: any) => ((x.inviteCode as string) || "").toUpperCase()),
+    ...store.visitors.map((x: any) =>
+      ((x.inviteCode as string) || "").toUpperCase()
+    ),
   ]);
 
   const invite: Invite = {
@@ -78,12 +89,12 @@ export async function hostCreateInvite(formData: FormData) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=created&guest=${encodeURIComponent(visitorName)}`);
+  redirect(`/host?flash=created&guest=${encodeURIComponent(visitorName)}`);
 }
 
 export async function hostCancelInvite(formData: FormData) {
+  const sessionHost = await getCurrentHost();
   const inviteId = s(formData.get("inviteId"));
-  const hostName = s(formData.get("hostName"));
 
   if (!inviteId) redirect("/host?flash=bad_cancel");
 
@@ -91,8 +102,11 @@ export async function hostCancelInvite(formData: FormData) {
   const store = ensureArrays(storeRaw);
 
   const inv = store.invites.find((i: Invite) => i.id === inviteId);
-  if (!inv) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=not_found`);
-  if (inv.status !== "pending") redirect(`/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cant_cancel`);
+  if (!inv) redirect("/host?flash=not_found");
+  if (inv.status !== "pending") redirect("/host?flash=cant_cancel");
+
+  const ownerKey = inv.hostKey || normKey(inv.hostName);
+  if (ownerKey !== sessionHost.key) redirect("/host?flash=forbidden");
 
   inv.status = "cancelled";
   (inv as any).cancelledAt = nowISO();
@@ -102,33 +116,50 @@ export async function hostCancelInvite(formData: FormData) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  redirect(`/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cancelled&guest=${encodeURIComponent(inv.visitorName || "")}`);
+  redirect(
+    `/host?flash=cancelled&guest=${encodeURIComponent(
+      inv.visitorName || ""
+    )}`
+  );
 }
 
-/**
- * Shared logic (used by both actions)
- */
-async function startCheckoutInternal(hostName: string, codeRaw: string) {
-  const code = codeRaw.toUpperCase().replace(/\s+/g, "");
+export async function hostStartCheckout(formData: FormData) {
+  const sessionHost = await getCurrentHost();
+  const hostName = sessionHost.name;
 
-  if (hostName.length < 2) return { ok: false as const, flash: "bad_host", guest: "" };
-  if (!code) return { ok: false as const, flash: "code_missing", guest: "" };
+  const code = s(formData.get("code")).toUpperCase().replace(/\s+/g, "");
+  if (!code) redirect("/host?flash=code_missing");
 
   const storeRaw = await readStore();
   const store = ensureArrays(storeRaw);
 
   const v = store.visitors.find(
-    (x: any) => !x.checkedOutAt && (((x.inviteCode as string) || "").toUpperCase() === code)
+    (x: any) =>
+      !x.checkedOutAt &&
+      ((x.inviteCode as string) || "").toUpperCase() === code
   );
 
-  if (!v) return { ok: false as const, flash: "visitor_notfound", guest: "" };
+  if (!v) redirect("/host?flash=visitor_notfound");
+
+  const visitorHostKey =
+    normKey(v.hostName || v.host || "") ||
+    normKey(v.hostKey || "");
+
+  if (visitorHostKey && visitorHostKey !== sessionHost.key) {
+    redirect("/host?flash=forbidden");
+  }
 
   const existingActiveReq = store.checkoutRequests.find(
-    (r: CheckoutRequest) => r.visitorId === v.id && r.status === "requested"
+    (r: CheckoutRequest) =>
+      r.visitorId === v.id && r.status === "requested"
   );
 
   if (existingActiveReq) {
-    return { ok: true as const, flash: "checkout_already", guest: (v.fullName || "").toString() };
+    redirect(
+      `/host?flash=checkout_already&guest=${encodeURIComponent(
+        v.fullName || ""
+      )}`
+    );
   }
 
   const req: CheckoutRequest = {
@@ -137,7 +168,7 @@ async function startCheckoutInternal(hostName: string, codeRaw: string) {
     visitorName: v.fullName,
     visitorIdNumber: v.idNumber,
     hostName,
-    hostKey: normKey(hostName),
+    hostKey: sessionHost.key,
     inviteCode: v.inviteCode,
     requestedAt: nowISO(),
     status: "requested",
@@ -154,40 +185,9 @@ async function startCheckoutInternal(hostName: string, codeRaw: string) {
   revalidatePath("/host");
   revalidatePath("/security");
 
-  return { ok: true as const, flash: "checkout_started", guest: (v.fullName || "").toString() };
-}
-
-/**
- * Use this for client “instant” button (NO redirect)
- */
-export async function hostStartCheckoutLive(formData: FormData) {
-  const hostName = s(formData.get("hostName"));
-  const code = s(formData.get("code"));
-  return startCheckoutInternal(hostName, code);
-}
-
-/**
- * Keep this for classic <form action={hostStartCheckout}> flows (WITH redirect + toast)
- */
-export async function hostStartCheckout(formData: FormData) {
-  const hostName = s(formData.get("hostName"));
-  const code = s(formData.get("code"));
-
-  const res = await startCheckoutInternal(hostName, code);
-
-  if (!res.ok) {
-    if (res.flash === "code_missing") {
-      redirect(`/host?host=${encodeURIComponent(hostName)}&flash=code_missing`);
-    }
-    if (res.flash === "visitor_notfound") {
-      redirect(`/host?host=${encodeURIComponent(hostName)}&flash=visitor_notfound`);
-    }
-    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_host`);
-  }
-
-  if (res.flash === "checkout_already") {
-    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_already&guest=${encodeURIComponent(res.guest || "")}`);
-  }
-
-  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=checkout_started&guest=${encodeURIComponent(res.guest || "")}`);
+  redirect(
+    `/host?flash=checkout_started&guest=${encodeURIComponent(
+      v.fullName || ""
+    )}`
+  );
 }

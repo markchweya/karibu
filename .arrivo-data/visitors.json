@@ -1,6 +1,25 @@
 {
   "visitors": [
     {
+      "id": "0de1d41f-a7bf-4ed5-9ba9-800ae213b0ed",
+      "kind": "invite",
+      "idNumber": "239810",
+      "fullName": "Sandra Hawii",
+      "destination": "Admin",
+      "decision": "approved",
+      "createdAt": "2026-02-10T19:59:53.831Z"
+    },
+    {
+      "id": "c0447b46-0c68-49e8-9d10-cb3c7102e87a",
+      "kind": "invite",
+      "idNumber": "223920",
+      "fullName": "Hawii",
+      "destination": "Admin",
+      "decision": "approved",
+      "createdAt": "2026-02-10T12:28:49.393Z",
+      "checkedOutAt": "2026-02-10T12:45:04.886Z"
+    },
+    {
       "id": "a19afc0a-4d0c-4d08-a2d9-83aa4985feb7",
       "kind": "invite",
       "idNumber": "239182",
