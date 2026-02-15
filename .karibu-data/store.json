@@ -14,7 +14,8 @@
       "createdAt": "2026-02-10T19:59:53.831Z",
       "checkoutRequestedAt": "2026-02-10T20:03:48.389Z",
       "checkoutRequestedBy": "host",
-      "checkoutRequestId": "fccaa3e9-96c2-45a4-ab30-77a0292a951a"
+      "checkoutRequestId": "fccaa3e9-96c2-45a4-ab30-77a0292a951a",
+      "checkedOutAt": "2026-02-10T20:15:02.875Z"
     },
     {
       "id": "c0447b46-0c68-49e8-9d10-cb3c7102e87a",

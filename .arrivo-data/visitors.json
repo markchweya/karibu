@@ -7,7 +7,8 @@
       "fullName": "Sandra Hawii",
       "destination": "Admin",
       "decision": "approved",
-      "createdAt": "2026-02-10T19:59:53.831Z"
+      "createdAt": "2026-02-10T19:59:53.831Z",
+      "checkedOutAt": "2026-02-10T20:15:02.875Z"
     },
     {
       "id": "c0447b46-0c68-49e8-9d10-cb3c7102e87a",
