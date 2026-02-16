@@ -1,11 +1,11 @@
 import Shell from "@/components/Shell";
 import Link from "next/link";
-import { securityWalkIn } from "../actions";
+import { registerWalkin } from "../actions";
 
 export default function WalkInPage() {
   return (
     <Shell title="Walk-in capture" subtitle="Create a visitor record at the gate when not pre-invited." right={<Link href="/security" className="btn-ghost">Back</Link>}>
-      <form action={securityWalkIn} className="grid lg:grid-cols-2 gap-6">
+      <form action={registerWalkin} className="grid lg:grid-cols-2 gap-6">
         <div className="glass p-5 space-y-4">
           <div className="text-sm font-semibold">Visitor details</div>
           <div>
@@ -49,7 +49,9 @@ export default function WalkInPage() {
             <input name="purpose" className="field mt-1" placeholder="e.g., Meeting / Delivery / Appointment" required />
           </div>
 
-          <button className="btn-primary w-full mt-2">Create + auto check-in</button>
+          <button className="w-full mt-4 rounded-xl bg-black/80 hover:bg-black text-white font-semibold py-3 text-lg tracking-wide transition shadow-lg">
+            Check In
+          </button>
 
           <div className="text-xs text-white/60">
             This immediately marks the visitor as checked-in and generates a visitor code to be used at the office for checkout start.

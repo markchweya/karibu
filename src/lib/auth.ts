@@ -1,9 +1,6 @@
-﻿import "server-only";
+import "server-only";
 import { cookies } from "next/headers";
-
-/* ======================================================
-   Arrivo Auth (MVP)
-====================================================== */
+import { redirect } from "next/navigation";
 
 export type Session = {
   email: string;
@@ -14,48 +11,45 @@ export type Session = {
 
 const COOKIE_NAME = "arrivo_session";
 
-/* ------------------------------------------------------
-   Token verification (MVP-safe)
------------------------------------------------------- */
 export async function verifySessionToken(token: string): Promise<Session | null> {
   try {
-    const t = token.trim();
-    let json = t;
+    const parts = token.trim().split(".");
+    if (parts.length !== 3) return null;
 
-    const looksBase64 = /^[A-Za-z0-9\-_]+=*$/.test(t) && t.length > 20;
-    if (looksBase64) {
-      const normalized = t.replace(/-/g, "+").replace(/_/g, "/");
-      json = Buffer.from(normalized, "base64").toString("utf8");
-    }
+    const payloadPart = parts[1];
 
-    const parsed = JSON.parse(json) as Session;
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const json = Buffer.from(normalized, "base64").toString("utf8");
+
+    const parsed = JSON.parse(json);
 
     if (!parsed?.email || !parsed?.role) return null;
     if (!["admin", "security", "host"].includes(parsed.role)) return null;
 
-    return parsed;
+    return {
+      email: parsed.email,
+      role: parsed.role,
+      iat: parsed.iat,
+      exp: parsed.exp,
+    } as Session;
   } catch {
     return null;
   }
 }
 
-/* ------------------------------------------------------
-   REQUIRED by src/app/page.tsx
------------------------------------------------------- */
 export async function getSession(): Promise<Session | null> {
-  const jar = await cookies();          //  FIX: cookies() is async
+  const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return verifySessionToken(token);
 }
 
-/* ------------------------------------------------------
-   Helpers
------------------------------------------------------- */
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
-  return session;
+  if (!session) {
+    redirect("/login");
+  }
+  return session as Session;
 }
 
 export const SESSION_COOKIE_NAME = COOKIE_NAME;

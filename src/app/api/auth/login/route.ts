@@ -3,10 +3,8 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 
-// Force Node runtime (needed for crypto + Prisma)
 export const runtime = "nodejs";
 
-// Cookie name used for the session
 const COOKIE = "arrivo_session";
 
 function base64url(input: Buffer | string) {
@@ -24,9 +22,9 @@ function signToken(payload: Record<string, unknown>) {
 
   const h = base64url(JSON.stringify(header));
   const p = base64url(JSON.stringify(payload));
-
   const data = `${h}.${p}`;
   const sig = crypto.createHmac("sha256", secret).update(data).digest();
+
   return `${data}.${base64url(sig)}`;
 }
 
@@ -43,7 +41,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Find user
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user || !user.passwordHash) {
@@ -53,7 +50,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verify password
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       return NextResponse.json(
@@ -62,12 +58,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create signed session token (7 days)
     const now = Math.floor(Date.now() / 1000);
+
+    // 🔥 NORMALIZE ROLE TO LOWERCASE
+    const role = String(user.role).toLowerCase();
+
     const token = signToken({
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role,
       iat: now,
       exp: now + 60 * 60 * 24 * 7,
     });
@@ -78,11 +77,10 @@ export async function POST(req: Request) {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
-        role: user.role,
+        role,
       },
     });
 
-    // Set cookie using NextResponse cookie API (works in route handlers)
     res.cookies.set({
       name: COOKIE,
       value: token,
@@ -102,7 +100,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Optional: allow quick health check
 export async function GET() {
-  return NextResponse.json({ ok: true, route: "/api/auth/login" });
+  return NextResponse.json({ ok: true });
 }

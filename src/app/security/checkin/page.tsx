@@ -1,21 +1,30 @@
 import Shell from "@/components/Shell";
 import Link from "next/link";
-import { securityCheckIn } from "../actions";
+import { checkInInviteByCode } from "../actions";
 
 export default function CheckInPage() {
   return (
-    <Shell title="Gate check-in" subtitle="Verify invite by code or ID number, then check in." right={<Link href="/security" className="btn-ghost">Back</Link>}>
-      <form action={securityCheckIn} className="glass p-5 max-w-xl space-y-4">
+    <Shell
+      title="Visitor Check-In"
+      subtitle="Enter invite code to check visitor in"
+      right={<Link href="/security">Back</Link>}
+    >
+      <form action={checkInInviteByCode} className="max-w-xl space-y-6">
         <div>
-          <div className="label">Visitor code (preferred)</div>
-          <input name="code" className="field mt-1 uppercase tracking-widest" placeholder="e.g., 7H3K2QZ" />
+          <label className="block text-sm font-medium mb-2 text-white/80">
+            Invite Code
+          </label>
+          <input
+            name="code"
+            required
+            placeholder="Enter visitor invite code"
+            className="w-full rounded-xl px-4 py-3 bg-black/40 backdrop-blur-md border border-black/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-black"
+          />
         </div>
-        <div>
-          <div className="label">OR ID / Passport number</div>
-          <input name="idNumber" className="field mt-1" placeholder="e.g., A1234567" />
-        </div>
-        <button className="btn-primary w-full">Confirm check-in</button>
-        <div className="text-xs text-white/60">If no invite exists, use Walk-in capture.</div>
+
+        <button className="w-full rounded-xl bg-black/80 hover:bg-black text-white font-semibold py-3 text-lg transition shadow-lg">
+          Check In
+        </button>
       </form>
     </Shell>
   );

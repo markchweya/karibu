@@ -1,6 +1,26 @@
 {
   "visitors": [
     {
+      "id": "491e0461-5bf7-4604-85ce-af32a5b7ad67",
+      "kind": "walkin",
+      "idNumber": "993892",
+      "fullName": "Mark Chweya",
+      "destination": "Admin",
+      "purpose": "Delivery",
+      "decision": "approved",
+      "createdAt": "2026-02-15T20:00:11.626Z"
+    },
+    {
+      "id": "2bc488f5-713f-4d4d-bb3d-099741e9e7f0",
+      "kind": "walkin",
+      "idNumber": "92808002",
+      "fullName": "Mark Chweya",
+      "destination": "Admin",
+      "purpose": "Meeting",
+      "decision": "approved",
+      "createdAt": "2026-02-15T19:56:56.396Z"
+    },
+    {
       "id": "0de1d41f-a7bf-4ed5-9ba9-800ae213b0ed",
       "kind": "invite",
       "idNumber": "239810",
