@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 
 export async function registerWalkin(formData: FormData) {
   const session = await requireSession();
-  if (session.role !== "security") throw new Error("FORBIDDEN");
+  if (session.role !== "security") redirect("/login");
 
   const fullName = String(formData.get("fullName") || "");
   const idNumber = String(formData.get("idNumber") || "");
@@ -44,7 +44,7 @@ export async function registerWalkin(formData: FormData) {
 
 export async function checkInInviteByCode(formData: FormData) {
   const session = await requireSession();
-  if (session.role !== "security") throw new Error("FORBIDDEN");
+  if (session.role !== "security") redirect("/login");
 
   const code = String(formData.get("code") || "");
 
@@ -64,7 +64,7 @@ export async function checkInInviteByCode(formData: FormData) {
 
 export async function confirmExit(formData: FormData) {
   const session = await requireSession();
-  if (session.role !== "security") throw new Error("FORBIDDEN");
+  if (session.role !== "security") redirect("/login");
 
   const fullName = String(formData.get("fullName") || "").trim();
   if (!fullName) throw new Error("Full name is required");
@@ -74,8 +74,7 @@ export async function confirmExit(formData: FormData) {
       status: "CHECKED_IN",
       visitor: {
         fullName: {
-          contains: fullName,
-          mode: "insensitive",
+          contains: fullName
         },
       },
     },

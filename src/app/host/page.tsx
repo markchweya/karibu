@@ -3,6 +3,7 @@ import Badge from "@/components/Badge";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
+import { redirect } from "next/navigation";
 
 function minutesSince(date: Date) {
   return Math.floor((Date.now() - date.getTime()) / 60000);
@@ -10,7 +11,10 @@ function minutesSince(date: Date) {
 
 export default async function HostHome() {
   const session = await requireSession();
-  if (session.role !== "host") throw new Error("FORBIDDEN");
+
+  if (session.role !== "host") {
+    redirect("/login");
+  }
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
