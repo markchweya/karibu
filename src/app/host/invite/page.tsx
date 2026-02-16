@@ -41,7 +41,7 @@ export default function InvitePage({ searchParams }: { searchParams?: Record<str
             </div>
           </div>
 
-          <button className="btn-primary w-full mt-2">Create invite</button>
+          <button className="btn btn-primary w-full mt-4 text-base tracking-wide">Create Invite</button>
         </div>
 
         <div className="glass p-5 space-y-4">

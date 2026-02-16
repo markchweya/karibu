@@ -1,38 +1,98 @@
 import Shell from "@/components/Shell";
 import Badge from "@/components/Badge";
+import LiveDuration from "@/components/LiveDuration";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
+import { revalidatePath } from "next/cache";
 
-function minutesSince(date: Date) {
-  return Math.floor((Date.now() - date.getTime()) / 60000);
+function minutesBetween(a: Date, b: Date) {
+  return Math.floor((a.getTime() - b.getTime()) / 60000);
+}
+
+async function checkIn(formData: FormData) {
+  "use server";
+  const visitId = String(formData.get("visitId") || "");
+  if (!visitId) return;
+
+  await prisma.visit.update({
+    where: { id: visitId },
+    data: {
+      status: "CHECKED_IN",
+      checkInAt: new Date(),
+    },
+  });
+
+  revalidatePath("/security");
+  revalidatePath("/host");
+  revalidatePath("/admin");
+}
+
+async function confirmExit(formData: FormData) {
+  "use server";
+  const visitId = String(formData.get("visitId") || "");
+  if (!visitId) return;
+
+  const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+  if (!visit || !visit.checkInAt) return;
+
+  const durationMinutes = minutesBetween(new Date(), visit.checkInAt);
+
+  await prisma.visit.update({
+    where: { id: visitId },
+    data: {
+      status: "COMPLETED",
+      exitConfirmedAt: new Date(),
+      durationMinutes,
+    },
+  });
+
+  revalidatePath("/security");
+  revalidatePath("/host");
+  revalidatePath("/admin");
 }
 
 export default async function SecurityHome() {
   const session = await requireSession();
-  if (session.role !== "security") {
-    throw new Error("FORBIDDEN");
-  }
+  if (session.role !== "security") throw new Error("FORBIDDEN");
 
-  const [arrivals, activeVisits, escalated] = await Promise.all([
+  const [
+    pendingArrivals,
+    activeVisits,
+    checkoutRequestedVisits,
+    escalatedCount
+  ] = await Promise.all([
     prisma.visit.findMany({
-      where: { checkInAt: null },
+      where: { status: "REGISTERED" },
       include: { visitor: true, host: true },
       orderBy: { createdAt: "desc" },
     }),
     prisma.visit.findMany({
-      where: {
-        checkInAt: { not: null },
-        exitConfirmedAt: null,
-      },
+      where: { status: "CHECKED_IN", exitConfirmedAt: null },
       include: { visitor: true, host: true },
       orderBy: { checkInAt: "asc" },
     }),
+    prisma.visit.findMany({
+      where: { status: "CHECKOUT_REQUESTED", exitConfirmedAt: null },
+      include: { visitor: true, host: true },
+      orderBy: { checkoutStartAt: "asc" },
+    }),
     prisma.visit.count({
-      where: { status: { contains: "ESCALATED" } },
+      where: {
+        OR: [
+          { status: { contains: "ESCALATED" } },
+          {
+            status: "CHECKOUT_REQUESTED",
+            checkoutStartAt: { not: null },
+            // escalated if >= 10 mins
+          }
+        ]
+      },
     }),
   ]);
+
+  const now = new Date();
 
   return (
     <Shell
@@ -46,109 +106,102 @@ export default async function SecurityHome() {
     >
       {/* ACTION BUTTONS */}
       <div className="flex gap-4 mb-8">
-        <Link
-          href="/security/checkin"
-          className="px-5 py-3 rounded-lg bg-black/60 text-white font-medium hover:bg-black/70 transition"
-        >
-          Check In Visitor
-        </Link>
-        <Link
-          href="/security/walkin"
-          className="px-5 py-3 rounded-lg bg-black/60 text-white font-medium hover:bg-black/70 transition"
-        >
-          Register Walk-in
-        </Link>
-        <Link
-          href="/security/exit"
-          className="px-5 py-3 rounded-lg bg-black/60 text-white font-medium hover:bg-black/70 transition"
-        >
-          Confirm Exit
-        </Link>
+        <Link href="/security/checkin" className="btn btn-primary">Manual Check In</Link>
+        <Link href="/security/walkin" className="btn btn-ghost">Register Walk-in</Link>
+        <Link href="/security/exit" className="btn btn-accent">Exit Log</Link>
       </div>
 
       {/* METRICS */}
-      <div className="grid md:grid-cols-3 gap-6 mb-10">
+      <div className="grid md:grid-cols-4 gap-6 mb-10">
         {[
-          { label: "Pending Arrivals", value: arrivals.length },
+          { label: "Pending Arrivals", value: pendingArrivals.length },
           { label: "Active Visitors", value: activeVisits.length },
-          { label: "Escalated", value: escalated },
+          { label: "Checkout Requested", value: checkoutRequestedVisits.length },
+          { label: "Escalated", value: escalatedCount },
         ].map((item) => (
-          <div
-            key={item.label}
-            className="rounded-xl p-6 bg-black/50 backdrop-blur-md border border-black/30 shadow-lg"
-          >
-            <div className="text-sm font-semibold text-white/80 tracking-wide">
-              {item.label}
-            </div>
-            <div className="text-4xl font-bold mt-3 text-white">
-              {item.value}
-            </div>
+          <div key={item.label} className="card card-pad">
+            <div className="label">{item.label}</div>
+            <div className="text-3xl font-bold">{item.value}</div>
           </div>
         ))}
       </div>
 
-      {/* ARRIVALS QUEUE */}
-      <div className="mb-10">
-        <div className="text-xl font-semibold mb-4 text-black">
-          Arrivals Queue
-        </div>
-
+      {/* ARRIVALS */}
+      <div className="mb-12">
+        <h2 className="h2 mb-4">Arrivals Queue</h2>
         <div className="grid gap-4">
-          {arrivals.map((v) => (
-            <div
-              key={v.id}
-              className="rounded-xl p-5 bg-black/40 backdrop-blur-md border border-black/30 shadow-md"
-            >
-              <div className="text-white font-semibold">
-                {v.visitor.fullName}
+          {pendingArrivals.map(v => (
+            <div key={v.id} className="card card-pad flex justify-between">
+              <div>
+                <div className="font-semibold">{v.visitor.fullName}</div>
+                <div className="text-sm text-gray-600">ID: {v.visitor.idNumber}</div>
+                <div className="text-sm text-gray-600">Destination: {v.destination}</div>
+                <div className="text-sm text-gray-600">Purpose: {v.purpose}</div>
               </div>
-              <div className="text-white/80 text-sm mt-1">
-                Host: {v.host?.fullName || "—"} • {v.destination}
-              </div>
+              <form action={checkIn}>
+                <input type="hidden" name="visitId" value={v.id} />
+                <button className="btn btn-primary">Check In</button>
+              </form>
             </div>
           ))}
-
-          {arrivals.length === 0 && (
-            <div className="text-black/70 text-sm">
-              No pending arrivals.
-            </div>
+          {pendingArrivals.length === 0 && (
+            <div className="text-gray-600">No pending arrivals.</div>
           )}
         </div>
       </div>
 
-      {/* CURRENTLY INSIDE */}
-      <div>
-        <div className="text-xl font-semibold mb-4 text-black">
-          Currently Inside
-        </div>
-
+      {/* ACTIVE VISITORS */}
+      <div className="mb-12">
+        <h2 className="h2 mb-4">Currently Inside</h2>
         <div className="grid gap-4">
-          {activeVisits.map((v) => {
-            const mins = v.checkInAt ? minutesSince(v.checkInAt) : 0;
-            const tone = mins >= 16 ? "danger" : mins >= 13 ? "warning" : "info";
+          {activeVisits.map(v => (
+            <div key={v.id} className="card card-pad flex justify-between">
+              <div>
+                <div className="font-semibold">{v.visitor.fullName}</div>
+                <div className="text-sm text-gray-600">
+                  <LiveDuration start={v.checkInAt as Date} /> inside
+                </div>
+              </div>
+              <Badge tone="info">Inside</Badge>
+            </div>
+          ))}
+          {activeVisits.length === 0 && (
+            <div className="text-gray-600">No active visitors.</div>
+          )}
+        </div>
+      </div>
+
+      {/* CHECKOUT REQUESTED */}
+      <div>
+        <h2 className="h2 mb-4">Checkout Requested</h2>
+        <div className="grid gap-4">
+          {checkoutRequestedVisits.map(v => {
+            const over10 = v.checkoutStartAt
+              ? minutesBetween(now, v.checkoutStartAt) >= 10
+              : false;
 
             return (
-              <div
-                key={v.id}
-                className="rounded-xl p-5 bg-black/40 backdrop-blur-md border border-black/30 flex items-center justify-between flex-wrap gap-4 shadow-md"
-              >
+              <div key={v.id} className="card card-pad flex justify-between">
                 <div>
-                  <div className="font-semibold text-white text-lg">
-                    {v.visitor.fullName}
+                  <div className="font-semibold">{v.visitor.fullName}</div>
+                  <div className={`text-sm ${over10 ? "text-red-600 font-semibold" : "text-yellow-600"}`}>
+                    Checkout timer: <LiveDuration start={v.checkoutStartAt as Date} />
                   </div>
-                  <div className="text-sm text-white/80 mt-1">
-                    {v.destination} • {mins} mins
-                  </div>
+                  {over10 && (
+                    <div className="mt-2 text-sm text-red-600 font-semibold">
+                      ⚠ Over 10 minutes since checkout request
+                    </div>
+                  )}
                 </div>
-                <Badge tone={tone as any}>{mins}m</Badge>
+                <form action={confirmExit}>
+                  <input type="hidden" name="visitId" value={v.id} />
+                  <button className="btn btn-accent">Confirm Exit</button>
+                </form>
               </div>
             );
           })}
-
-          {activeVisits.length === 0 && (
-            <div className="text-black/70 text-sm">
-              No active visitors.
-            </div>
+          {checkoutRequestedVisits.length === 0 && (
+            <div className="text-gray-600">No checkout requests.</div>
           )}
         </div>
       </div>
