@@ -45,12 +45,13 @@ export default async function HostHome() {
     myTotalVisits,
     myTodayVisits,
     myActiveVisits,
-    myEscalations
+    myEscalations,
+    myPendingInvites
   ] = await Promise.all([
     prisma.visit.count({ where: { host: { email: session.email } } }),
     prisma.visit.count({
       where: {
-        hostUserId: session.email,
+        host: { email: session.email },
         createdAt: { gte: startOfToday }
       }
     }),
@@ -65,9 +66,17 @@ export default async function HostHome() {
     }),
     prisma.visit.count({
       where: {
-        hostUserId: session.email,
+        host: { email: session.email },
         status: { contains: "ESCALATED" }
       }
+    }),
+    prisma.visit.findMany({
+      where: {
+        host: { email: session.email },
+        status: "REGISTERED"
+      },
+      include: { visitor: true },
+      orderBy: { createdAt: "desc" }
     })
   ]);
 
@@ -178,6 +187,67 @@ export default async function HostHome() {
           {myActiveVisits.length === 0 && (
             <div className="text-black/70 text-sm">
               No active visitors.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* PENDING INVITES */}
+      <div className="mt-14">
+        <div className="text-xl font-semibold mb-5 text-black">
+          Pending Invites
+        </div>
+
+        <div className="grid gap-4">
+          {myPendingInvites.map((v) => (
+            <div
+              key={v.id}
+              className="rounded-xl p-5 bg-black/40 backdrop-blur-md border border-black/30 flex items-center justify-between flex-wrap gap-4 shadow-md"
+            >
+              <div>
+                <div className="font-semibold text-white text-lg">
+                  {v.visitor.fullName}
+                  <span className="ml-2 text-white/70 text-sm">
+                    ({v.visitor.idNumber})
+                  </span>
+                </div>
+
+                <div className="text-sm text-white/80 mt-1">
+                  {v.destination}
+                </div>
+
+                <div className="text-sm text-yellow-300 mt-1">
+                  Awaiting Security Check-in
+                </div>
+              </div>
+
+              <form
+                action={async (formData: FormData) => {
+                  "use server";
+                  const visitId = formData.get("visitId") as string;
+                  if (!visitId) return;
+
+                  await prisma.visit.update({
+                    where: { id: visitId },
+                    data: { status: "CANCELLED" }
+                  });
+
+                  revalidatePath("/host");
+                  revalidatePath("/security");
+                  revalidatePath("/admin");
+                }}
+              >
+                <input type="hidden" name="visitId" value={v.id} />
+                <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm transition">
+                  Cancel Invite
+                </button>
+              </form>
+            </div>
+          ))}
+
+          {myPendingInvites.length === 0 && (
+            <div className="text-black/70 text-sm">
+              No pending invites.
             </div>
           )}
         </div>
