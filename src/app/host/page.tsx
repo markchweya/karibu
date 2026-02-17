@@ -158,7 +158,21 @@ export default async function HostHome() {
                   </div>
 
                   <div className="text-sm text-white/70 mt-1">
-                    <LiveDuration start={v.checkInAt as Date} /> inside
+                    {v.status === "CHECKOUT_REQUESTED" && v.checkoutStartAt ? (
+                    <>
+                      <span className={
+                        (Date.now() - new Date(v.checkoutStartAt as Date).getTime()) / 60000 >= 10
+                          ? "text-red-500 font-semibold"
+                          : "text-yellow-300"
+                      }>
+                        <LiveDuration start={v.checkoutStartAt as Date} /> since checkout request
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <LiveDuration start={v.checkInAt as Date} /> inside
+                    </>
+                  )}
                   </div>
                 </div>
 
