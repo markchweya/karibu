@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export default function KaribuInbox() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
 
@@ -27,13 +29,15 @@ export default function KaribuInbox() {
     return () => clearInterval(interval);
   }, []);
 
+  if (pathname === "/login") return null;
+
   const unreadCount = notifications.filter(n => !n.readAt).length;
 
   return (
-    <div className="fixed bottom-4 right-4">
+    <div className="fixed bottom-6 right-6 z-50">
       <button
         onClick={() => setOpen(!open)}
-        className="bg-black text-white px-4 py-2 rounded-full"
+        className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold px-5 py-3 rounded-full shadow-lg transition"
       >
         Inbox ({unreadCount})
       </button>
