@@ -2,6 +2,7 @@ import Shell from "@/components/Shell";
 import { rejectInviteByCode } from "./actions";
 import Badge from "@/components/Badge";
 import LiveDuration from "@/components/LiveDuration";
+
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
@@ -107,7 +108,7 @@ export default async function SecurityHome() {
     >
       {/* ACTION BUTTONS */}
       <div className="flex gap-4 mb-8">
-        <Link href="/security/checkin" className="btn btn-primary">Manual Check In</Link>
+        
         <Link href="/security/walkin" className="btn btn-ghost">Register Walk-in</Link>
         <Link href="/security/exit" className="btn btn-accent">Exit Log</Link>
       </div>

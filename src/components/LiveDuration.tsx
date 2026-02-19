@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 
 export default function LiveDuration({ start }: { start: Date }) {
-  const [seconds, setSeconds] = useState(() =>
-    Math.floor((Date.now() - new Date(start).getTime()) / 1000)
-  );
+  const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {

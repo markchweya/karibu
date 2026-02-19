@@ -54,6 +54,9 @@ export default function SecurityExitClient() {
                 {v.visitor.fullName}
               </div>
               <div className="text-sm text-white/70">
+                ID: {v.visitor.idNumber}
+              </div>
+              <div className="text-sm text-white/70">
                 {v.destination}
               </div>
             </div>
