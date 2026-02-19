@@ -24,11 +24,13 @@ export async function verifySessionToken(token: string): Promise<Session | null>
     const parsed = JSON.parse(json);
 
     if (!parsed?.email || !parsed?.role) return null;
-    if (!["admin", "security", "host"].includes(parsed.role)) return null;
+    const normalizedRole = String(parsed.role).toLowerCase();
+
+    if (!["admin", "security", "host"].includes(normalizedRole)) return null;
 
     return {
       email: parsed.email,
-      role: parsed.role,
+      role: normalizedRole as Session["role"],
       iat: parsed.iat,
       exp: parsed.exp,
     } as Session;

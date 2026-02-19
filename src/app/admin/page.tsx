@@ -3,6 +3,7 @@ import Badge from "@/components/Badge";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
+import { redirect } from "next/navigation";
 
 function minutesSince(date: Date) {
   return Math.floor((Date.now() - date.getTime()) / 60000);
@@ -10,7 +11,9 @@ function minutesSince(date: Date) {
 
 export default async function AdminHome() {
   const session = await requireSession();
-  if (session.role !== "admin") throw new Error("FORBIDDEN");
+  if (session.role !== "admin") {
+    redirect("/login");
+  }
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -32,7 +35,7 @@ export default async function AdminHome() {
       include: { visitor: true, host: true },
       orderBy: { checkInAt: "asc" }
     }),
-    prisma.visit.count({ where: { status: { contains: "ESCALATED" } } }),
+    prisma.visit.count({ where: { OR: [ { status: { contains: "ESCALATED" } }, { checkoutStartAt: { not: null }, exitConfirmedAt: null } ] } }),
     prisma.visit.count({ where: { isWalkIn: true } })
   ]);
 
