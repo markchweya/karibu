@@ -5,16 +5,14 @@ import { requireSession } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function minutesSince(date: Date) {
   return Math.floor((Date.now() - date.getTime()) / 60000);
 }
 
-export default async function AdminHome() {
-  const session = await requireSession();
-  if (session.role !== "admin") {
-    redirect("/login");
-  }
-
+async function getData() {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
@@ -35,7 +33,14 @@ export default async function AdminHome() {
       include: { visitor: true, host: true },
       orderBy: { checkInAt: "asc" }
     }),
-    prisma.visit.count({ where: { OR: [ { status: { contains: "ESCALATED" } }, { checkoutStartAt: { not: null }, exitConfirmedAt: null } ] } }),
+    prisma.visit.count({
+      where: {
+        OR: [
+          { status: { contains: "ESCALATED" } },
+          { checkoutStartAt: { not: null }, exitConfirmedAt: null }
+        ]
+      }
+    }),
     prisma.visit.count({ where: { isWalkIn: true } })
   ]);
 
@@ -43,7 +48,21 @@ export default async function AdminHome() {
     _avg: { durationMinutes: true }
   });
 
-  const avgDuration = Math.round(avgDurationAgg._avg.durationMinutes || 0);
+  return {
+    totalVisits,
+    visitsToday,
+    activeVisits,
+    escalatedVisits,
+    walkIns,
+    avgDuration: Math.round(avgDurationAgg._avg.durationMinutes || 0)
+  };
+}
+
+export default async function AdminHome() {
+  const session = await requireSession();
+  if (session.role !== "admin") redirect("/login");
+
+  const data = await getData();
 
   return (
     <Shell
@@ -55,15 +74,16 @@ export default async function AdminHome() {
         </form>
       }
     >
-      {/* METRICS */}
+      <meta httpEquiv="refresh" content="5" />
+
       <div className="grid md:grid-cols-3 gap-6 mb-10">
         {[
-          { label: "Total Visits", value: totalVisits },
-          { label: "Today", value: visitsToday },
-          { label: "Active Now", value: activeVisits.length },
-          { label: "Escalated", value: escalatedVisits },
-          { label: "Walk-ins", value: walkIns },
-          { label: "Avg Duration (min)", value: avgDuration }
+          { label: "Total Visits", value: data.totalVisits },
+          { label: "Today", value: data.visitsToday },
+          { label: "Active Now", value: data.activeVisits.length },
+          { label: "Escalated", value: data.escalatedVisits },
+          { label: "Walk-ins", value: data.walkIns },
+          { label: "Avg Duration (min)", value: data.avgDuration }
         ].map((item) => (
           <div
             key={item.label}
@@ -79,14 +99,13 @@ export default async function AdminHome() {
         ))}
       </div>
 
-      {/* ACTIVE VISITORS */}
       <div>
         <div className="text-xl font-semibold mb-5 text-black">
           Currently Checked-In Visitors
         </div>
 
         <div className="grid gap-4">
-          {activeVisits.map((v) => {
+          {data.activeVisits.map((v) => {
             const mins = v.checkInAt ? minutesSince(v.checkInAt) : 0;
             const tone = mins >= 16 ? "danger" : mins >= 13 ? "warning" : "info";
 
@@ -117,7 +136,7 @@ export default async function AdminHome() {
             );
           })}
 
-          {activeVisits.length === 0 && (
+          {data.activeVisits.length === 0 && (
             <div className="text-black/70 text-sm">
               No active visitors.
             </div>
