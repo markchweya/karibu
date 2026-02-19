@@ -39,6 +39,7 @@ export async function hostCreateInvite(formData: FormData) {
     where: {
       hostUserId: hostUser.id,
       createdAt: { gte: today },
+      status: { notIn: ["REJECTED", "CANCELLED"] }
     },
   });
 

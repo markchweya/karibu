@@ -41,6 +41,12 @@ export default async function HostHome() {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
+  const hostUser = await prisma.user.findUnique({
+    where: { email: session.email },
+  });
+
+  if (!hostUser) redirect("/login");
+
   const [
     myTotalVisits,
     myTodayVisits,
@@ -48,16 +54,22 @@ export default async function HostHome() {
     myEscalations,
     myPendingInvites
   ] = await Promise.all([
-    prisma.visit.count({ where: { host: { email: session.email } } }),
+    prisma.visit.count({ 
+      where: { 
+        hostUserId: hostUser.id,
+        status: { notIn: ["CANCELLED", "REJECTED"] }
+      } 
+    }),
     prisma.visit.count({
       where: {
-        host: { email: session.email },
-        createdAt: { gte: startOfToday }
+        hostUserId: hostUser.id,
+        createdAt: { gte: startOfToday },
+        status: { notIn: ["CANCELLED", "REJECTED"] }
       }
     }),
     prisma.visit.findMany({
       where: {
-        host: { email: session.email },
+        hostUserId: hostUser.id,
         checkInAt: { not: null },
         exitConfirmedAt: null
       },
@@ -66,13 +78,13 @@ export default async function HostHome() {
     }),
     prisma.visit.count({
       where: {
-        host: { email: session.email },
+        hostUserId: hostUser.id,
         status: { contains: "ESCALATED" }
       }
     }),
     prisma.visit.findMany({
       where: {
-        host: { email: session.email },
+        hostUserId: hostUser.id,
         status: "REGISTERED"
       },
       include: { visitor: true },
@@ -81,7 +93,7 @@ export default async function HostHome() {
   ]);
 
   const avgAgg = await prisma.visit.aggregate({
-    where: { hostUserId: session.email },
+    where: { hostUserId: hostUser.id },
     _avg: { durationMinutes: true }
   });
 
