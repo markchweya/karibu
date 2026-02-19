@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-const COOKIE = "arrivo_session";
+const COOKIE = "karibu_session";
 
 function base64url(input: Buffer | string) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);

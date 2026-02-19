@@ -1,5 +1,5 @@
-import Shell from "@/components/Shell";
-import Badge from "@/components/Badge";
+import KaribuShell from "@/components/Shell";
+import KaribuBadge from "@/components/Badge";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
@@ -65,7 +65,7 @@ export default async function AdminHome() {
   const data = await getData();
 
   return (
-    <Shell
+    <KaribuShell
       title="Admin Control Center"
       subtitle="System intelligence & live visitor monitoring"
       right={
@@ -131,7 +131,7 @@ export default async function AdminHome() {
                   </div>
                 </div>
 
-                <Badge tone={tone as any}>{mins}m</Badge>
+                <KaribuBadge tone={tone as any}>{mins}m</KaribuBadge>
               </div>
             );
           })}
@@ -143,6 +143,6 @@ export default async function AdminHome() {
           )}
         </div>
       </div>
-    </Shell>
+    </KaribuShell>
   );
 }

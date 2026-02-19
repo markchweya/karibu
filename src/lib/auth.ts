@@ -9,7 +9,7 @@ export type Session = {
   exp?: number;
 };
 
-const COOKIE_NAME = "arrivo_session";
+const COOKIE_NAME = "karibu_session";
 
 export async function verifySessionToken(token: string): Promise<Session | null> {
   try {

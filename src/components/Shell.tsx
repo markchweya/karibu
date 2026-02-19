@@ -19,10 +19,10 @@ export default function Shell({
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
             <div className={cn("h-10 w-10 rounded-2xl glass grid place-items-center")}>
-              <span className="font-black tracking-tight">A</span>
+              <span className="font-black tracking-tight">K</span>
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-semibold text-white/90">Arrivo</div>
+              <div className="text-sm font-semibold text-white/90">Karibu</div>
               <div className="text-xs text-white/55">USIU Visitor Control</div>
             </div>
           </Link>

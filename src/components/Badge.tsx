@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export default function Badge({ children, tone = "neutral" }: { children: any; tone?: "neutral" | "warn" | "danger" | "good" }) {
+export default function KaribuBadge({ children, tone = "neutral" }: { children: any; tone?: "neutral" | "warn" | "danger" | "good" }) {
   const map = {
     neutral: "bg-white/10 border-white/10 text-white/80",
     warn: "bg-usiu-gold/20 border-usiu-gold/25 text-usiu-goldSoft",

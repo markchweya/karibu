@@ -1,4 +1,5 @@
 import Shell from "@/components/Shell";
+import { rejectInviteByCode } from "./actions";
 import Badge from "@/components/Badge";
 import LiveDuration from "@/components/LiveDuration";
 import Link from "next/link";
@@ -138,10 +139,19 @@ export default async function SecurityHome() {
                 <div className="text-sm text-gray-600">Destination: {v.destination}</div>
                 <div className="text-sm text-gray-600">Purpose: {v.purpose}</div>
               </div>
-              <form action={checkIn}>
-                <input type="hidden" name="visitId" value={v.id} />
-                <button className="btn btn-primary">Check In</button>
-              </form>
+              <div className="flex gap-2">
+                <form action={checkIn}>
+                  <input type="hidden" name="visitId" value={v.id} />
+                  <button className="btn btn-primary">Check In</button>
+                </form>
+
+                <form action={rejectInviteByCode}>
+                  <input type="hidden" name="code" value={v.code} />
+                  <button className="btn btn-ghost text-red-600">
+                    Reject
+                  </button>
+                </form>
+              </div>
             </div>
           ))}
           {pendingArrivals.length === 0 && (

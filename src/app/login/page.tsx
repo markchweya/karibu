@@ -70,7 +70,7 @@ export default function LoginPage() {
               <span className="h-3 w-3 rounded-full bg-[#F0C000]" />
             </span>
             <div>
-              <div className="font-semibold">Arrivo</div>
+              <div className="font-semibold">Karibu</div>
               <div className="text-xs text-slate-500">USIU Visitor Control</div>
             </div>
           </Link>
@@ -87,7 +87,7 @@ export default function LoginPage() {
 
             <p className="mt-4 max-w-xl text-slate-600">
               Hosts invite. Security verifies. Offices check out.
-              Arrivo enforces exit and escalation.
+              Karibu enforces exit and escalation.
             </p>
 
             <div className="mt-10">
