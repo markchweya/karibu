@@ -1,21 +1,61 @@
+"use client";
+
 import Shell from "@/components/Shell";
 import Link from "next/link";
+import IDScanner from "@/components/IDScanner";
 import { registerWalkin } from "../actions";
+import { useRef, useState } from "react";
 
 export default function WalkInPage() {
+  const nameRef = useRef<HTMLInputElement>(null);
+  const idRef = useRef<HTMLInputElement>(null);
+  const [showScanner, setShowScanner] = useState(false);
+
+  const handleDetected = (data:{name:string,id:string})=>{
+    if (nameRef.current && data.name) {
+      nameRef.current.value = data.name;
+    }
+    if (idRef.current && data.id) {
+      idRef.current.value = data.id;
+    }
+
+    // hide scanner once detected so user sees fields filled
+    setShowScanner(false);
+  };
+
   return (
-    <Shell title="Walk-in capture" subtitle="Create a visitor record at the gate when not pre-invited." right={<Link href="/security" className="btn-ghost">Back</Link>}>
+    <Shell
+      title="Walk-in capture"
+      subtitle="Create a visitor record at the gate when not pre-invited."
+      right={<Link href="/security" className="btn-ghost">Back</Link>}
+    >
       <form action={registerWalkin} className="grid lg:grid-cols-2 gap-6">
         <div className="glass p-5 space-y-4">
+
+          <button
+            type="button"
+            onClick={() => setShowScanner(true)}
+            className="px-4 py-2 rounded-lg bg-black text-white font-semibold"
+          >
+            Scan ID
+          </button>
+
+          {showScanner && (
+            <IDScanner onDetected={handleDetected} />
+          )}
+
           <div className="text-sm font-semibold">Visitor details</div>
+
           <div>
             <div className="label">Full name</div>
-            <input name="fullName" className="field mt-1" required />
+            <input ref={nameRef} name="fullName" className="field mt-1" required />
           </div>
+
           <div>
             <div className="label">ID / Passport number</div>
-            <input name="idNumber" className="field mt-1" required />
+            <input ref={idRef} name="idNumber" className="field mt-1" required />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="label">Email (optional)</div>
@@ -26,6 +66,7 @@ export default function WalkInPage() {
               <input name="phone" className="field mt-1" />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="label">Vehicle plate (optional)</div>
@@ -40,10 +81,12 @@ export default function WalkInPage() {
 
         <div className="glass p-5 space-y-4">
           <div className="text-sm font-semibold">Purpose + destination</div>
+
           <div>
             <div className="label">Destination (office)</div>
             <input name="destination" className="field mt-1" placeholder="e.g., Admin Block" required />
           </div>
+
           <div>
             <div className="label">Purpose</div>
             <input name="purpose" className="field mt-1" placeholder="e.g., Meeting / Delivery / Appointment" required />
