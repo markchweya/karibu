@@ -21,13 +21,25 @@ html,body{ height:100%; }
 body{
   margin:0;
   color: var(--text);
-  background:
-    radial-gradient(1000px 520px at 12% 10%, rgba(32,48,144,0.12), transparent 60%),
-    radial-gradient(1000px 520px at 92% 6%, rgba(240,192,0,0.14), transparent 60%),
-    radial-gradient(900px 520px at 55% 92%, rgba(32,48,144,0.08), transparent 60%),
-    var(--bg);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1000px 520px at 12% 10%, rgba(32,48,144,0.10), transparent 60%),
+    radial-gradient(1000px 520px at 92% 6%, rgba(240,192,0,0.12), transparent 60%),
+    radial-gradient(900px 520px at 55% 92%, rgba(32,48,144,0.08), transparent 60%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
+
+/* ---- Force readable text (remove white text issues) ---- */
+.text-white,
+.text-white\/60,
+.text-white\/70,
+.text-white\/80{
+  color: var(--text) !important;
+}
+
 
 a{ color: inherit; text-decoration: none; }
 *{ box-sizing:border-box; }

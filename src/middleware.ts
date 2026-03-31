@@ -6,7 +6,7 @@ export function middleware(req: NextRequest) {
   const isPublic = url.pathname.startsWith("/login") || url.pathname.startsWith("/_next") || url.pathname.startsWith("/favicon");
   if (isPublic) return NextResponse.next();
 
-  const cookie = req.cookies.get("arrivo_session")?.value;
+  const cookie = req.cookies.get("karibu_session")?.value;
   if (!cookie) return NextResponse.redirect(new URL("/login", req.url));
   return NextResponse.next();
 }

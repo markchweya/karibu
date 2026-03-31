@@ -1,16 +1,20 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
+import KaribuInbox from "@/components/KaribuInbox";
 
 export const metadata: Metadata = {
-  title: "Arrivo  USIU Visitor Control",
-  description: "Invite, check-in, check-out, and overstay escalation.",
+  title: "Karibu – USIU Visitor Control",
+  description:
+    "Karibu Visitor Management System – Invite, check-in, check-out, and overstay escalation.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <KaribuInbox />
+      </body>
     </html>
   );
 }
-

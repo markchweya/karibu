@@ -1,92 +1,121 @@
-﻿"use server";
+"use server";
 
+import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import {
-  readStore,
-  writeStore,
-  s,
-  todayISO,
-  normKey,
-  ensureUniqueCode,
-  newId,
-  type Invite,
-} from "@/lib/karibuStore";
+import { randomUUID } from "crypto";
 
-const MAX_INVITES_PER_HOST_PER_DAY = 4;
+const MAX_INVITES_PER_DAY = 4;
 
-export async function hostCreateInvite(formData: FormData) {
-  const hostName = s(formData.get("hostName"));
-  const visitorName = s(formData.get("visitorName"));
-  const visitorIdNumber = s(formData.get("visitorIdNumber"));
-  const purpose = s(formData.get("purpose"));
-  const destination = s(formData.get("destination"));
-
-  if (hostName.length < 2) redirect("/host?flash=bad_host");
-  if (visitorName.length < 2) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_name`);
-  if (visitorIdNumber.length < 4) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_id`);
-  if (purpose.length < 2) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=bad_purpose`);
-
-  const store = await readStore();
-  const forDate = todayISO();
-  const hostKey = normKey(hostName);
-
-  // count invites created today for this host (excluding cancelled)
-  const todays = store.invites.filter((i) => i.forDate === forDate && i.hostKey === hostKey && i.status !== "cancelled");
-  if (todays.length >= MAX_INVITES_PER_HOST_PER_DAY) {
-    redirect(`/host?host=${encodeURIComponent(hostName)}&flash=limit`);
-  }
-
-  // no duplicates: same visitor ID already invited today by this host (pending)
-  const dup = todays.some((i) => i.visitorIdNumber === visitorIdNumber && i.status === "pending");
-  if (dup) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=dup_invite`);
-
-  const existingCodes = new Set<string>([
-    ...store.invites.map((x) => x.code),
-    ...store.visitors.map((x) => x.inviteCode || ""),
-  ]);
-
-  const invite: Invite = {
-    id: newId(),
-    code: ensureUniqueCode(existingCodes, 7),
-    hostName,
-    hostKey,
-    visitorName,
-    visitorIdNumber,
-    purpose,
-    destination: destination || undefined,
-    forDate,
-    createdAt: new Date().toISOString(),
-    status: "pending",
-  };
-
-  store.invites.unshift(invite);
-  await writeStore(store);
-
-  revalidatePath("/host");
-  revalidatePath("/security");
-  redirect(`/host?host=${encodeURIComponent(hostName)}&flash=created`);
+function todayStart() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-export async function hostCancelInvite(formData: FormData) {
-  const inviteId = s(formData.get("inviteId"));
-  const hostName = s(formData.get("hostName"));
+export async function hostCreateInvite(formData: FormData) {
+  const session = await requireSession();
+  if (session.role !== "host") redirect("/login");
 
-  if (!inviteId) redirect("/host?flash=bad_cancel");
+  const visitorName = String(formData.get("visitorName") || "").trim();
+  const visitorIdNumber = String(formData.get("visitorIdNumber") || "").trim();
+  const purpose = String(formData.get("purpose") || "").trim();
+  const destination = String(formData.get("destination") || "").trim();
 
-  const store = await readStore();
-  const inv = store.invites.find((i) => i.id === inviteId);
-  if (!inv) redirect(`/host?host=${encodeURIComponent(hostName)}&flash=not_found`);
+  if (visitorName.length < 2) redirect("/host/invite?error=name");
+  if (visitorIdNumber.length < 4) redirect("/host/invite?error=id");
+  if (purpose.length < 2) redirect("/host/invite?error=purpose");
 
-  // only cancel pending (checked-in should not be cancelled)
-  if (inv.status !== "pending") redirect(`/host?host=${encodeURIComponent(hostName)}&flash=cant_cancel`);
+  const hostUser = await prisma.user.findUnique({
+    where: { email: session.email },
+  });
 
-  inv.status = "cancelled";
-  inv.cancelledAt = new Date().toISOString();
+  if (!hostUser) redirect("/login");
 
-  await writeStore(store);
+  const today = todayStart();
+
+  const todaysCount = await prisma.visit.count({
+    where: {
+      hostUserId: hostUser.id,
+      createdAt: { gte: today },
+      status: { notIn: ["REJECTED", "CANCELLED"] }
+    },
+  });
+
+  if (todaysCount >= MAX_INVITES_PER_DAY) {
+    redirect("/host?flash=limit");
+  }
+
+  let visitor = await prisma.visitor.findUnique({
+    where: { idNumber: visitorIdNumber },
+  });
+
+  if (!visitor) {
+    visitor = await prisma.visitor.create({
+      data: {
+        fullName: visitorName,
+        idNumber: visitorIdNumber,
+      },
+    });
+  }
+
+  const code = randomUUID().slice(0, 8).toUpperCase();
+
+  await prisma.visit.create({
+    data: {
+      code,
+      purpose,
+      destination,
+      visitorId: visitor.id,
+      hostUserId: hostUser.id,
+      createdByUserId: hostUser.id,
+      status: "REGISTERED",
+    },
+  });
 
   revalidatePath("/host");
   revalidatePath("/security");
-  redirect(`/host?host=${encodeURIComponent(hostName || inv.hostName)}&flash=cancelled`);
+  revalidatePath("/admin");
+
+  redirect("/host?flash=created");
+}
+
+export async function hostStartCheckout(formData: FormData) {
+  const session = await requireSession();
+  if (session.role !== "host") redirect("/login");
+
+  const visitId = String(formData.get("visitId") || "");
+  if (!visitId) redirect("/host?flash=bad_checkout");
+
+  const visit = await prisma.visit.findUnique({
+    where: { id: visitId },
+  });
+
+  if (!visit) redirect("/host?flash=not_found");
+
+  await prisma.visit.update({
+    where: { id: visitId },
+    data: {
+      status: "CHECKOUT_REQUESTED",
+      checkoutStartAt: new Date(),
+    },
+  });
+
+  await prisma.notification.create({
+    data: {
+      role: "SECURITY",
+      title: "Checkout Requested",
+      body: `Visitor ${visit.code} requested checkout by host.`,
+
+      level: "warning",
+      visitCode: visit.code,
+    },
+  });
+
+  revalidatePath("/host");
+  revalidatePath("/security");
+  revalidatePath("/admin");
+
+  redirect("/host?flash=checkout_started");
 }

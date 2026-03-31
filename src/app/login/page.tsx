@@ -66,11 +66,11 @@ export default function LoginPage() {
       <header className="relative z-10">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
           <Link href="/" className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[rgba(32,48,144,0.12)]">
-              <span className="h-3 w-3 rounded-full bg-[#F0C000]" />
-            </span>
+            <div className="h-10 w-10 rounded-2xl glass grid place-items-center">
+              <span className="font-black tracking-tight">K</span>
+            </div>
             <div>
-              <div className="font-semibold">Arrivo</div>
+              <div className="font-semibold">Karibu</div>
               <div className="text-xs text-slate-500">USIU Visitor Control</div>
             </div>
           </Link>
@@ -87,7 +87,7 @@ export default function LoginPage() {
 
             <p className="mt-4 max-w-xl text-slate-600">
               Hosts invite. Security verifies. Offices check out.
-              Arrivo enforces exit and escalation.
+              Karibu enforces exit and escalation.
             </p>
 
             <div className="mt-10">
